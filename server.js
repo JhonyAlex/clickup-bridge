@@ -9,9 +9,12 @@ const CLICKUP_API = "https://api.clickup.com/api/v2";
 
 app.use(express.json());
 
+/** ------------------ OAuth State ------------------ **/
+let OAUTH_ACCESS_TOKEN = null;
+
 /** ------------------ Utils ------------------ **/
 const AUTH = () => ({
-  Authorization: process.env.CLICKUP_API_TOKEN,
+  Authorization: OAUTH_ACCESS_TOKEN || process.env.CLICKUP_API_TOKEN,
   "Content-Type": "application/json",
 });
 const j = (r) => r.json().catch(() => ({}));
@@ -54,6 +57,56 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 app.get("/sse", (_req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.write(`event: ready\ndata: ClickUp Bridge activo\n\n`);
+});
+
+/** ------------------ OAuth Endpoints ------------------ **/
+
+// Iniciar flujo OAuth
+app.get("/oauth/authorize", (req, res) => {
+  const authUrl = `https://app.clickup.com/api?client_id=${process.env.CLICKUP_CLIENT_ID}&redirect_uri=https://clickup.zynodo.com/oauth/callback`;
+  res.redirect(authUrl);
+});
+
+// Callback OAuth - intercambiar código por access token
+app.get("/oauth/callback", async (req, res) => {
+  const { code } = req.query;
+  if (!code) {
+    return res.status(400).json({ error: "No authorization code received" });
+  }
+
+  try {
+    const tokenResponse = await fetch("https://api.clickup.com/api/v2/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        client_id: process.env.CLICKUP_CLIENT_ID,
+        client_secret: process.env.CLICKUP_CLIENT_SECRET,
+        code: code,
+      }),
+    });
+
+    const tokenData = await tokenResponse.json();
+    if (tokenData.access_token) {
+      OAUTH_ACCESS_TOKEN = tokenData.access_token;
+      res.json({ 
+        success: true, 
+        message: "OAuth authentication successful",
+        expires_in: tokenData.expires_in 
+      });
+    } else {
+      res.status(400).json({ error: "Failed to get access token", details: tokenData });
+    }
+  } catch (error) {
+    res.status(500).json({ error: "OAuth callback failed", details: error.message });
+  }
+});
+
+// Endpoint para verificar estado OAuth
+app.get("/oauth/status", (req, res) => {
+  res.json({ 
+    authenticated: !!OAUTH_ACCESS_TOKEN,
+    token_available: !!OAUTH_ACCESS_TOKEN 
+  });
 });
 
 /** ------------------ Proxy genérico /api/* ------------------ **/

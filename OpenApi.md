@@ -70,6 +70,78 @@ paths:
       responses:
         "200":
           description: Task History JSON
+  /api/task/{taskId}:
+    get:
+      operationId: getTask
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Complete Task Details JSON
+  /api/task/{taskId}/subtask:
+    get:
+      operationId: getSubtasks
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Subtasks JSON
+  /api/task/{taskId}/attachment:
+    get:
+      operationId: getTaskAttachments
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task Attachments JSON
+  /api/task/{taskId}/time:
+    get:
+      operationId: getTaskTimeTracking
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Time Tracking JSON
+  /oauth/authorize:
+    get:
+      operationId: startOAuth
+      responses:
+        "302":
+          description: Redirect to ClickUp OAuth
+  /oauth/callback:
+    get:
+      operationId: oauthCallback
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OAuth Success
+  /oauth/status:
+    get:
+      operationId: oauthStatus
+      responses:
+        "200":
+          description: OAuth Authentication Status
   /commands/find_space:
     get:
       operationId: findSpace
