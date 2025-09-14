@@ -1594,10 +1594,15 @@ app.get("/commands/find", async (req, res) => {
 });
 
 /** ------------------ Start ------------------ **/
-const httpsOptions = {
-  key: readFileSync("key.pem"),
-  cert: readFileSync("cert.pem"),
-};
-https.createServer(httpsOptions, app).listen(PORT, () => {
-  console.log(`Bridge HTTPS running on port ${PORT}`);
-});
+import { existsSync } from 'fs';
+if (existsSync("key.pem") && existsSync("cert.pem")) {
+  const httpsOptions = {
+    key: readFileSync("key.pem"),
+    cert: readFileSync("cert.pem"),
+  };
+  https.createServer(httpsOptions, app).listen(PORT, () => {
+    console.log(`Bridge HTTPS running on port ${PORT}`);
+  });
+} else {
+  app.listen(PORT, () => console.log(`Bridge HTTP running on port ${PORT}`));
+}

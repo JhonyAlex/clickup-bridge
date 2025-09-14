@@ -16,7 +16,9 @@ info:
     
 servers:
   - url: https://localhost:3107
-    description: "Servidor local de desarrollo"
+    description: "Servidor local de desarrollo (HTTPS)"
+  - url: http://localhost:3107
+    description: "Servidor local de desarrollo (HTTP)"
 
 paths:
   /commands/smart_find_folder:
