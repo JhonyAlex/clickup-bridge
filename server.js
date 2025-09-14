@@ -1,6 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
+import { readFileSync } from 'fs';
 dotenv.config();
 
 const app = express();
@@ -57,6 +58,26 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 app.get("/sse", (_req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.write(`event: ready\ndata: ClickUp Bridge activo\n\n`);
+});
+
+/** ------------------ OpenAPI Endpoint ------------------ **/
+// Servir el OpenAPI YAML desde el archivo OpenApi.md
+app.get("/openapi.yaml", (req, res) => {
+  console.log("OpenAPI endpoint hit");
+  try {
+    const openApiContent = readFileSync('OpenApi.md', 'utf8');
+    console.log("File read successfully, length:", openApiContent.length);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(openApiContent);
+  } catch (e) {
+    console.error('Error reading OpenAPI file:', e);
+    res.status(500).json({ error: "OpenAPI specification not found", details: e.message });
+  }
+});
+
+// Test endpoint
+app.get("/test-openapi", (req, res) => {
+  res.json({ message: "Test endpoint works" });
 });
 
 /** ------------------ OAuth Endpoints ------------------ **/
@@ -1456,6 +1477,116 @@ app.get("/commands/find_docs", async (req, res) => {
     );
 
     res.json({ hits, total: hits.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 7) ENDPOINT DE BÚSQUEDA UNIFICADA INTELIGENTE (Anti-ResponseTooLargeError)
+app.get("/commands/find", async (req, res) => {
+  const { 
+    teamId,
+    workspaceId,  // Para documentos
+    query,        // Término de búsqueda obligatorio
+    type = 'all', // 'spaces', 'folders', 'lists', 'tasks', 'users', 'docs', 'all'
+    limit = 20    // Límite por tipo
+  } = req.query;
+  
+  if (!query) {
+    return res.status(400).json({ 
+      error: "query parameter is required to prevent ResponseTooLargeError",
+      example: "/commands/find?query=client&type=all&teamId=123",
+      supported_types: ['spaces', 'folders', 'lists', 'tasks', 'users', 'docs', 'all']
+    });
+  }
+  
+  if (type !== 'docs' && !teamId) {
+    return res.status(400).json({ error: "teamId is required for non-doc searches" });
+  }
+  
+  if (type === 'docs' && !workspaceId) {
+    return res.status(400).json({ error: "workspaceId is required for document searches" });
+  }
+
+  try {
+    const results = {};
+    const searchTerm = String(query).toLowerCase();
+    const searchLimit = Math.min(parseInt(limit) || 20, 50);
+    
+    // SPACES
+    if (type === 'all' || type === 'spaces') {
+      try {
+        const normalizedQuery = normalizeSpaceName(query);
+        const spaceResponse = await cuGet(`/team/${teamId}/space`, { archived: "false" });
+        if (spaceResponse.ok) {
+          results.spaces = (spaceResponse.data?.spaces || [])
+            .filter(s => (s?.name || "").toLowerCase().includes(normalizedQuery.toLowerCase()))
+            .slice(0, searchLimit)
+            .map(s => ({ id: s.id, name: s.name, type: 'space' }));
+        }
+      } catch (e) {
+        results.spaces = { error: e.message };
+      }
+    }
+    
+    // USERS
+    if (type === 'all' || type === 'users') {
+      try {
+        const teamResponse = await cuGet(`/team/${teamId}`);
+        if (teamResponse.ok) {
+          results.users = (teamResponse.data?.team?.members || [])
+            .map(m => m.user)
+            .filter(u => u && (
+              (u.username || "").toLowerCase().includes(searchTerm) ||
+              (u.email || "").toLowerCase().includes(searchTerm)
+            ))
+            .slice(0, searchLimit)
+            .map(u => ({ id: u.id, username: u.username, email: u.email, type: 'user' }));
+        }
+      } catch (e) {
+        results.users = { error: e.message };
+      }
+    }
+    
+    // DOCS (solo si se proporciona workspaceId)
+    if ((type === 'all' || type === 'docs') && workspaceId) {
+      try {
+        const docsResponse = await cuGetV3(`/workspaces/${workspaceId}/docs`, { 
+          limit: searchLimit,
+          deleted: false,
+          archived: false
+        });
+        if (docsResponse.ok) {
+          results.docs = (docsResponse.data.docs || [])
+            .filter(d => (d.name || "").toLowerCase().includes(searchTerm))
+            .slice(0, searchLimit)
+            .map(d => ({ id: d.id, name: d.name, creator: d.creator, type: 'document' }));
+        }
+      } catch (e) {
+        results.docs = { error: e.message };
+      }
+    }
+    
+    // FOLDERS, LISTS, TASKS (requieren más contexto, solo si se especifica explícitamente)
+    if (type === 'folders' || type === 'lists' || type === 'tasks') {
+      results.message = `Para buscar ${type}, usa los endpoints específicos: smart_find_folder, find_list, search_tasks`;
+      results.suggestion = "Estos tipos requieren spaceId/folderId para evitar ResponseTooLargeError";
+    }
+    
+    // Calcular totales
+    const totalResults = Object.values(results)
+      .filter(r => Array.isArray(r))
+      .reduce((sum, arr) => sum + arr.length, 0);
+    
+    res.json({
+      query: query,
+      total_results: totalResults,
+      search_type: type,
+      limit_per_type: searchLimit,
+      results,
+      suggestion: totalResults === 0 ? "Try a different search term or check spelling" : null
+    });
+    
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
