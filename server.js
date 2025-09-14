@@ -579,16 +579,16 @@ app.get("/commands/executive_report", async (req, res) => {
   const { 
     teamId, 
     spaceName, 
-    dateFrom, 
-    dateTo, 
+    from, 
+    to, 
     timezone = 'Europe/Madrid',
     includeComments = 'true',
     includeDescriptions = 'false' 
   } = req.query;
   
-  if (!teamId || !spaceName || !dateFrom || !dateTo) {
+  if (!teamId || !spaceName || !from || !to) {
     return res.status(400).json({ 
-      error: "teamId, spaceName, dateFrom y dateTo son obligatorios" 
+      error: "teamId, spaceName, from y to son obligatorios" 
     });
   }
 
@@ -611,8 +611,8 @@ app.get("/commands/executive_report", async (req, res) => {
     const space = spaces[0];
     
     // 2. Parsear fechas
-    const fromTimestamp = parseDate(dateFrom, timezone);
-    const toTimestamp = parseDate(dateTo, timezone);
+    const fromTimestamp = parseDate(from, timezone);
+    const toTimestamp = parseDate(to, timezone);
     
     if (!fromTimestamp || !toTimestamp) {
       return res.status(400).json({ 
@@ -620,16 +620,31 @@ app.get("/commands/executive_report", async (req, res) => {
       });
     }
     
-    // 3. Buscar tareas actualizadas en el rango
-    const tasksResponse = await cuGet("/task", {
-      space_ids: [space.id],
-      date_updated_gt: fromTimestamp,
-      date_updated_lt: toTimestamp + (24 * 60 * 60 * 1000) // +1 día para incluir todo el día
+    // 3. Buscar tareas actualizadas en el rango por listas del espacio
+    const listsResponse = await cuGet(`/space/${space.id}/list`, { archived: "false" });
+    if (!listsResponse.ok) return res.status(listsResponse.status).json(listsResponse.data);
+    
+    const lists = listsResponse.data?.lists || [];
+    let allTasks = [];
+    
+    // Obtener tareas de cada lista
+    for (const list of lists) {
+      const tasksResponse = await cuGet(`/list/${list.id}/task`, {
+        include_closed: "true",
+        date_updated_gt: fromTimestamp,
+        date_updated_lt: toTimestamp + (24 * 60 * 60 * 1000)
+      });
+      
+      if (tasksResponse.ok) {
+        allTasks.push(...(tasksResponse.data?.tasks || []));
+      }
+    }
+    
+    // Filtrar tareas por fecha de actualización
+    const tasks = allTasks.filter(task => {
+      const updatedDate = parseInt(task.date_updated);
+      return updatedDate >= fromTimestamp && updatedDate <= (toTimestamp + (24 * 60 * 60 * 1000));
     });
-    
-    if (!tasksResponse.ok) return res.status(tasksResponse.status).json(tasksResponse.data);
-    
-    const tasks = tasksResponse.data?.tasks || [];
     
     // 4. Generar informe con estilo impersonal
     const report = {
