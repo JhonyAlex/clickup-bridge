@@ -16,7 +16,7 @@ const j = (r) => r.json().catch(() => ({}));
 const q = (obj) =>
   new URLSearchParams(
     Object.fromEntries(
-      Object.entries(obj || {}).filter(([, v]) => v !== undefined && v !== null && v !== ""
+      Object.entries(obj || {}).filter(([, v]) => v !== undefined && v !== null && v !== "")
     )
   );
 const toEpoch = (v) => {
