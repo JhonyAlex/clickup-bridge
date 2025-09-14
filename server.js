@@ -57,9 +57,10 @@ app.get("/sse", (_req, res) => {
 });
 
 /** ------------------ Proxy genérico /api/* ------------------ **/
-app.all("/api/:path(*)", async (req, res) => {
-  const path = req.params.path || "";
-  const url = `${CLICKUP_API}/${path}`;
+app.all(/^\/api\/(.*)/, async (req, res) => {
+  const path = req.params[0] || "";
+  const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
+  const url = queryString ? `${CLICKUP_API}/${path}?${queryString}` : `${CLICKUP_API}/${path}`;
   const options = {
     method: req.method,
     headers: AUTH(),
