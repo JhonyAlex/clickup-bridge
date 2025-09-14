@@ -1,7 +1,8 @@
 openapi: 3.1.0
 info:
   title: ClickUp Bridge
-  version: "1.1.0"
+  version: "1.3.0"
+  description: "API proxy optimizada para ClickUp con navegación completa de estructura. Limitada a 30 operaciones esenciales para máxima compatibilidad con especificaciones OpenAPI."
 servers:
   - url: https://clickup.zynodo.com
 paths:
@@ -15,6 +16,45 @@ paths:
       operationId: listTeams
       responses:
         "200": { description: Teams JSON }
+  /api/team/{teamId}/member:
+    get:
+      operationId: listTeamMembers
+      summary: "Lista todos los miembros de un equipo"
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "ID del equipo"
+      responses:
+        "200":
+          description: "Lista de miembros del equipo"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        user:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            username:
+                              type: string
+                            email:
+                              type: string
+                            color:
+                              type: string
+                            profilePicture:
+                              type: string
+                        invited_by:
+                          type: object
   /api/team/{teamId}/space:
     get:
       operationId: listSpaces
@@ -22,13 +62,284 @@ paths:
         - { name: teamId, in: path, required: true, schema: { type: string } }
       responses:
         "200": { description: Spaces JSON }
+  /api/space/{spaceId}/folder:
+    get:
+      operationId: listFolders
+      summary: "Lista todas las carpetas dentro de un espacio"
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "ID del espacio"
+        - name: archived
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: "Incluir carpetas archivadas"
+      responses:
+        "200":
+          description: "Lista de carpetas en el espacio"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        orderindex:
+                          type: integer
+                        override_statuses:
+                          type: boolean
+                        hidden:
+                          type: boolean
+                        space:
+                          type: object
+                        task_count:
+                          type: string
+                        archived:
+                          type: boolean
   /api/space/{spaceId}/list:
     get:
-      operationId: listLists
+      operationId: listListsInSpace
+      summary: "Lista todas las listas directamente en un espacio (sin carpeta)"
       parameters:
-        - { name: spaceId, in: path, required: true, schema: { type: string } }
+        - name: spaceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "ID del espacio"
+        - name: archived
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: "Incluir listas archivadas"
       responses:
-        "200": { description: Lists JSON }
+        "200":
+          description: "Lista de listas en el espacio"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lists:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        orderindex:
+                          type: integer
+                        content:
+                          type: string
+                        status:
+                          type: object
+                        priority:
+                          type: object
+                        assignee:
+                          type: object
+                        task_count:
+                          type: integer
+                        due_date:
+                          type: string
+                        start_date:
+                          type: string
+                        folder:
+                          type: object
+                        space:
+                          type: object
+                        archived:
+                          type: boolean
+  /api/folder/{folderId}/list:
+    get:
+      operationId: listListsInFolder
+      summary: "Lista todas las listas dentro de una carpeta específica"
+      parameters:
+        - name: folderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "ID de la carpeta"
+        - name: archived
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: "Incluir listas archivadas"
+      responses:
+        "200":
+          description: "Lista de listas en la carpeta"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lists:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        orderindex:
+                          type: integer
+                        content:
+                          type: string
+                        status:
+                          type: object
+                        priority:
+                          type: object
+                        assignee:
+                          type: object
+                        task_count:
+                          type: integer
+                        due_date:
+                          type: string
+                        start_date:
+                          type: string
+                        folder:
+                          type: object
+                        space:
+                          type: object
+                        archived:
+                          type: boolean
+  /api/space/{spaceId}:
+    get:
+      operationId: getSpace
+      summary: "Obtiene información detallada de un espacio específico"
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "ID del espacio"
+      responses:
+        "200":
+          description: "Información detallada del espacio"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  private:
+                    type: boolean
+                  statuses:
+                    type: array
+                  multiple_assignees:
+                    type: boolean
+                  features:
+                    type: object
+                  archived:
+                    type: boolean
+  /api/folder/{folderId}:
+    get:
+      operationId: getFolder
+      summary: "Obtiene información detallada de una carpeta específica"
+      parameters:
+        - name: folderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "ID de la carpeta"
+      responses:
+        "200":
+          description: "Información detallada de la carpeta"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  orderindex:
+                    type: integer
+                  override_statuses:
+                    type: boolean
+                  hidden:
+                    type: boolean
+                  space:
+                    type: object
+                  task_count:
+                    type: string
+                  lists:
+                    type: array
+                  archived:
+                    type: boolean
+  /api/list/{listId}:
+    get:
+      operationId: getList
+      summary: "Obtiene información detallada de una lista específica"
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "ID de la lista"
+      responses:
+        "200":
+          description: "Información detallada de la lista"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  orderindex:
+                    type: integer
+                  content:
+                    type: string
+                  status:
+                    type: object
+                  priority:
+                    type: object
+                  assignee:
+                    type: object
+                  task_count:
+                    type: integer
+                  due_date:
+                    type: string
+                  start_date:
+                    type: string
+                  folder:
+                    type: object
+                  space:
+                    type: object
+                  statuses:
+                    type: array
+                  archived:
+                    type: boolean
   /api/list/{listId}/task:
     get:
       operationId: listTasks
@@ -70,6 +381,67 @@ paths:
       responses:
         "200":
           description: Complete Task Details JSON (includes assignees, status, dates, attachments, etc.)
+    put:
+      operationId: updateTask
+      summary: "Actualiza una tarea existente"
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: "ID de la tarea"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: "Nuevo nombre de la tarea"
+                description:
+                  type: string
+                  description: "Nueva descripción"
+                status:
+                  type: string
+                  description: "Nuevo status"
+                priority:
+                  type: integer
+                  description: "Nueva prioridad (1=urgent, 2=high, 3=normal, 4=low)"
+                assignees:
+                  type: object
+                  properties:
+                    add:
+                      type: array
+                      items:
+                        type: integer
+                      description: "IDs de usuarios a asignar"
+                    rem:
+                      type: array
+                      items:
+                        type: integer
+                      description: "IDs de usuarios a desasignar"
+                due_date:
+                  type: integer
+                  description: "Fecha límite (timestamp Unix en ms)"
+      responses:
+        "200":
+          description: "Tarea actualizada exitosamente"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  status:
+                    type: object
+                  assignees:
+                    type: array
   /oauth/authorize:
     get:
       operationId: startOAuth
@@ -269,23 +641,6 @@ paths:
         - { name: limit, in: query, required: false, schema: { type: integer } }
       responses:
         "200": { description: Comments list }
-  /commands/create_task:
-    post:
-      operationId: cmdCreateTask
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                listId: { type: string }
-                name: { type: string }
-                description: { type: string }
-                assignees: { type: array, items: { type: integer } }
-              required: [listId, name]
-      responses:
-        "200": { description: Created task }
   /commands/workspaces:
     get:
       operationId: getWorkspaces
