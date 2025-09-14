@@ -1,5 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
+import dotenv from "dotenv";
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3107;
@@ -111,31 +113,120 @@ app.get("/commands/find_list", async (req, res) => {
   res.json({ hits });
 });
 
-// 4) Buscar tareas con filtros: nombre parcial, fechas actualización, estado, asignado
+// 4) Búsqueda avanzada de tareas
 app.get("/commands/search_tasks", async (req, res) => {
-  const { listId, nameContains, updatedFrom, updatedTo, assignee, status, page, limit } = req.query;
-  if (!listId) return res.status(400).json({ error: "listId is required" });
+  const {
+    teamId,
+    spaceId: initialSpaceId,
+    spaceName,
+    folderId,
+    listId,
+    assigneeId,
+    assigneeName, // No usado directamente, pero podría ser para futuro find_user
+    updatedFrom,
+    updatedTo,
+    status,
+    nameContains,
+    page, // page se maneja a nivel de lista, no global
+    limit,
+  } = req.query;
 
-  const params = {
-    page: page ?? undefined,
-    limit: limit ?? 100,
-    order_by: "updated",
-    reverse: "true",
-    "assignees[]": assignee ?? undefined,
-    "statuses[]": status ?? undefined,
-    date_updated_gt: toEpoch(updatedFrom),
-    date_updated_lt: toEpoch(updatedTo),
-  };
-
-  const r = await cuGet(`/list/${listId}/task`, params);
-  if (!r.ok) return res.status(r.status).json(r.data);
-
-  let tasks = r.data?.tasks || [];
-  if (nameContains) {
-    const needle = String(nameContains).toLowerCase();
-    tasks = tasks.filter((t) => (t?.name || "").toLowerCase().includes(needle));
+  if (!teamId && spaceName) {
+    return res.status(400).json({ error: "teamId is required when using spaceName" });
   }
-  res.json({ total: tasks.length, tasks });
+  if (!initialSpaceId && !spaceName && !folderId && !listId) {
+    return res
+      .status(400)
+      .json({ error: "one of spaceId, spaceName, folderId or listId is required" });
+  }
+
+  try {
+    let spaceId = initialSpaceId;
+    // 1. Resolver spaceId si se proveyó spaceName
+    if (spaceName && !spaceId) {
+      const r = await cuGet(`/team/${teamId}/space`, { archived: "false" });
+      if (!r.ok) return res.status(r.status).json(r.data);
+      const needle = String(spaceName).toLowerCase();
+      const foundSpace = (r.data?.spaces || []).find((s) =>
+        (s?.name || "").toLowerCase().includes(needle)
+      );
+      if (!foundSpace) return res.status(404).json({ error: `Space '${spaceName}' not found` });
+      spaceId = foundSpace.id;
+    }
+
+    // 2. Recolectar todas las listas a consultar
+    const listsToFetch = [];
+    if (listId) {
+      // Si se da una lista, solo consultamos esa. Asumimos que es válida.
+      // Para obtener el nombre, podríamos hacer un GET, pero lo omitimos por eficiencia.
+      listsToFetch.push({ id: listId, name: "Unknown List" });
+    } else if (folderId) {
+      const r = await cuGet(`/folder/${folderId}/list`, { archived: "false" });
+      if (!r.ok) return res.status(r.status).json(r.data);
+      (r.data?.lists || []).forEach((l) => listsToFetch.push({ id: l.id, name: l.name }));
+    } else if (spaceId) {
+      // Listas directas del espacio
+      const rLists = await cuGet(`/space/${spaceId}/list`, { archived: "false" });
+      if (rLists.ok && rLists.data?.lists) {
+        rLists.data.lists.forEach((l) => listsToFetch.push({ id: l.id, name: l.name }));
+      }
+      // Listas dentro de carpetas del espacio
+      const rFolders = await cuGet(`/space/${spaceId}/folder`, { archived: "false" });
+      if (rFolders.ok && rFolders.data?.folders) {
+        for (const folder of rFolders.data.folders) {
+          const rFolderLists = await cuGet(`/folder/${folder.id}/list`, { archived: "false" });
+          if (rFolderLists.ok && rFolderLists.data?.lists) {
+            rFolderLists.data.lists.forEach((l) => listsToFetch.push({ id: l.id, name: l.name }));
+          }
+        }
+      }
+    }
+
+    if (listsToFetch.length === 0) {
+      return res.json({ total: 0, tasks: [] });
+    }
+
+    // 3. Consultar tareas para cada lista en paralelo
+    const taskParams = {
+      page: page ?? undefined, // ClickUp usa 'page' como un índice, no como paginación real
+      limit: Math.min(Number.isFinite(Number(limit)) ? Number(limit) : 100, 200),
+      order_by: "updated",
+      reverse: "true",
+      "assignees[]": assigneeId?.split?.(","),
+      reverse: true,
+      ... (assigneeId
+        ? Array.isArray(assigneeId)
+          ? { "assignees[]": assigneeId }
+          : assigneeId.includes(",")
+          ? { "assignees[]": assigneeId.split(",").map(s=>s.trim()).filter(Boolean) }
+          : { "assignees[]": [assigneeId] }
+        : {}),
+      "statuses[]": status,
+      ...(toEpoch(updatedFrom) ? { date_updated_gt: toEpoch(updatedFrom) } : {}),
+      ...(toEpoch(updatedTo) ? { date_updated_lt: toEpoch(updatedTo) } : {}),
+      ...(status ? {} : { include_closed: true }), // si no se filtra por estado, incluir cerradas
+    };
+
+    const promises = listsToFetch.map((list) =>
+      cuGet(`/list/${list.id}/task`, taskParams).then((r) => {
+        if (!r.ok) return [];
+        const tasks = r.data?.tasks || [];
+        return tasks.map((t) => ({ ...t, _list: { id: list.id, name: list.name } }));
+      })
+    );
+
+    let allTasks = (await Promise.all(promises)).flat();
+
+    // 4. Filtrar en memoria si es necesario
+    if (nameContains) {
+      const needle = String(nameContains).toLowerCase();
+      allTasks = allTasks.filter((t) => (t?.name || "").toLowerCase().includes(needle));
+    }
+
+    res.json({ total: allTasks.length, tasks: allTasks });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 5) Comentarios de una tarea
@@ -154,6 +245,37 @@ app.post("/commands/create_task", async (req, res) => {
   if (!listId || !name) return res.status(400).json({ error: "listId and name are required" });
   const r = await cuPost(`/list/${listId}/task`, { name, description, assignees });
   return res.status(r.status).json(r.data);
+});
+
+// 7) Buscar usuario por nombre en un team
+app.get("/commands/find_user", async (req, res) => {
+  const { teamId, name } = req.query;
+  if (!teamId || !name) {
+    return res.status(400).json({ error: "teamId and name are required" });
+  }
+
+  try {
+    // La API de ClickUp no tiene un endpoint para buscar usuarios por nombre.
+    // Obtenemos los detalles del equipo, que incluye la lista de miembros.
+    const r = await cuGet(`/team/${teamId}`);
+    if (!r.ok) return res.status(r.status).json(r.data);
+
+    const needle = String(name).toLowerCase();
+    const members = r.data?.team?.members || [];
+    const hits = members
+      .map((m) => m.user)
+      .filter(
+        (u) =>
+          u &&
+          ((u.username || "").toLowerCase().includes(needle) ||
+            (u.email || "").toLowerCase().includes(needle))
+      )
+      .map((u) => ({ id: u.id, username: u.username, email: u.email }));
+
+    res.json({ hits });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 /** ------------------ Start ------------------ **/
