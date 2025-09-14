@@ -30,17 +30,6 @@ paths:
       responses:
         "200": { description: Lists JSON }
   /api/list/{listId}/task:
-    get:
-      operationId: listTasks
-      parameters:
-        - name: listId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Tasks JSON
     post:
       operationId: createTask
       parameters:
@@ -58,42 +47,6 @@ paths:
               required: [name]
       responses:
         "200": { description: Task JSON }
-  /api/task/{taskId}:
-    get:
-      operationId: getTask
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Complete Task Details JSON (includes assignees, status, dates, attachments, etc.)
-  /oauth/authorize:
-    get:
-      operationId: startOAuth
-      responses:
-        "302":
-          description: Redirect to ClickUp OAuth
-  /oauth/callback:
-    get:
-      operationId: oauthCallback
-      parameters:
-        - name: code
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: OAuth Success
-  /oauth/status:
-    get:
-      operationId: oauthStatus
-      responses:
-        "200":
-          description: OAuth Authentication Status
   /commands/find_space:
     get:
       operationId: findSpace
@@ -171,49 +124,6 @@ paths:
               required: [listId, name]
       responses:
         "200": { description: Created task }
-  /commands/workspaces:
-    get:
-      operationId: getWorkspaces
-      responses:
-        "200": { description: List of workspaces }
-  /commands/search_docs:
-    get:
-      operationId: searchDocs
-      parameters:
-        - { name: workspaceId, in: query, required: true, schema: { type: string } }
-        - { name: limit, in: query, required: false, schema: { type: integer, default: 50 } }
-        - { name: creator, in: query, required: false, schema: { type: string } }
-        - { name: deleted, in: query, required: false, schema: { type: boolean, default: false } }
-        - { name: archived, in: query, required: false, schema: { type: boolean, default: false } }
-        - { name: parent_id, in: query, required: false, schema: { type: string } }
-        - { name: parent_type, in: query, required: false, schema: { type: string } }
-      responses:
-        "200": { description: Documents list }
-  /commands/get_doc:
-    get:
-      operationId: getDoc
-      parameters:
-        - { name: workspaceId, in: query, required: true, schema: { type: string } }
-        - { name: docId, in: query, required: true, schema: { type: string } }
-      responses:
-        "200": { description: Document details }
-  /commands/get_doc_pages:
-    get:
-      operationId: getDocPages
-      parameters:
-        - { name: workspaceId, in: query, required: true, schema: { type: string } }
-        - { name: docId, in: query, required: true, schema: { type: string } }
-      responses:
-        "200": { description: Document pages content }
-  /commands/find_docs:
-    get:
-      operationId: findDocs
-      parameters:
-        - { name: workspaceId, in: query, required: true, schema: { type: string } }
-        - { name: name, in: query, required: true, schema: { type: string } }
-        - { name: limit, in: query, required: false, schema: { type: integer, default: 50 } }
-      responses:
-        "200": { description: Matched documents }
 components:
   schemas: {}
 security:
