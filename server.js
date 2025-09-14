@@ -15,12 +15,20 @@ const AUTH = () => ({
   "Content-Type": "application/json",
 });
 const j = (r) => r.json().catch(() => ({}));
-const q = (obj) =>
-  new URLSearchParams(
-    Object.fromEntries(
-      Object.entries(obj || {}).filter(([, v]) => v !== undefined && v !== null && v !== "")
-    )
-  );
+const q = (params = {}) => {
+  const searchParams = new URLSearchParams();
+  for (const key in params) {
+    const value = params[key];
+    if (value !== undefined && value !== null && value !== "") {
+      if (Array.isArray(value)) {
+        value.forEach((v) => searchParams.append(key, v));
+      } else {
+        searchParams.set(key, value);
+      }
+    }
+  }
+  return searchParams;
+};
 const toEpoch = (v) => {
   if (!v) return undefined;
   if (/^\d+$/.test(String(v))) return Number(v);
