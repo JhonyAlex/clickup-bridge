@@ -193,14 +193,6 @@ app.get("/commands/search_tasks", async (req, res) => {
       order_by: "updated",
       reverse: "true",
       "assignees[]": assigneeId?.split?.(","),
-      reverse: true,
-      ... (assigneeId
-        ? Array.isArray(assigneeId)
-          ? { "assignees[]": assigneeId }
-          : assigneeId.includes(",")
-          ? { "assignees[]": assigneeId.split(",").map(s=>s.trim()).filter(Boolean) }
-          : { "assignees[]": [assigneeId] }
-        : {}),
       "statuses[]": status,
       ...(toEpoch(updatedFrom) ? { date_updated_gt: toEpoch(updatedFrom) } : {}),
       ...(toEpoch(updatedTo) ? { date_updated_lt: toEpoch(updatedTo) } : {}),
