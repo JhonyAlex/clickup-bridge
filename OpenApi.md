@@ -1,690 +1,534 @@
 openapi: 3.1.0
 info:
   title: ClickUp Bridge
-  version: "1.3.0"
-  description: "API proxy optimizada para ClickUp con navegación completa de estructura. Limitada a 30 operaciones esenciales para máxima compatibilidad con especificaciones OpenAPI."
+  version: "1.5.0"
+  description: |
+    🧠 **PROXY INTELIGENTE** para ClickUp con búsquedas automáticas.
+    
+    🚨 **REGLA IMPORTANTE**: NUNCA pidas IDs al usuario. Usa SIEMPRE los endpoints inteligentes.
+    
+    ✅ **ENDPOINTS RECOMENDADOS (úsalos SIEMPRE)**:
+    • smart_find_folder - Busca carpetas por nombre
+    • smart_create_task - Crea tareas automáticamente  
+    • nlp_create_task - Crea tareas desde lenguaje natural
+    • smart_find_docs - Busca documentos por nombre
+    • find - Búsqueda unificada inteligente
+    
 servers:
-  - url: https://clickup.zynodo.com
+  - url: http://localhost:3107
+
 paths:
+  /commands/smart_find_folder:
+    get:
+      operationId: smartFindFolder
+      summary: "🧠 Busca carpetas por NOMBRE (usa este siempre)"
+      description: |
+        ✅ **USA ESTE ENDPOINT** en lugar de pedir IDs al usuario.
+        Busca carpetas inteligentemente por nombre con filtrado automático.
+        Previene ResponseTooLargeError.
+      parameters:
+        - name: spaceId
+          in: query
+          required: true
+          schema: 
+            type: string
+          description: "ID del espacio donde buscar"
+        - name: name
+          in: query
+          required: true
+          schema: 
+            type: string
+          description: "Nombre o parte del nombre de la carpeta"
+        - name: limit
+          in: query
+          required: false
+          schema: 
+            type: integer
+            default: 20
+      responses:
+        "200": 
+          description: "✅ Carpetas encontradas"
+        "400": 
+          description: "❌ Falta el parámetro name"
+
+  /commands/smart_create_task:
+    post:
+      operationId: smartCreateTask
+      summary: "🧠 Crea tareas automáticamente (usa este siempre)"
+      description: |
+        ✅ **USA ESTE ENDPOINT** para crear tareas. Resuelve automáticamente:
+        • Busca espacios, carpetas y listas por nombre
+        • Convierte nombres de usuarios a IDs
+        • Procesamiento de contexto natural
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [teamId, spaceName, taskName, description]
+              properties:
+                teamId: 
+                  type: string
+                spaceName: 
+                  type: string
+                folderNameFilter: 
+                  type: string
+                listNameFilter: 
+                  type: string
+                naturalContext: 
+                  type: string
+                taskName: 
+                  type: string
+                description: 
+                  type: string
+                assigneeNames: 
+                  type: array
+                  items: 
+                    type: string
+                dueDate: 
+                  type: string
+                priority: 
+                  type: string
+                  enum: [normal, low, high, urgent]
+                  default: normal
+      responses:
+        "200": 
+          description: "✅ Tarea creada automáticamente"
+        "400": 
+          description: "❌ Campos obligatorios faltantes"
+        "404": 
+          description: "❌ No se encontró espacio/carpeta/lista"
+
+  /commands/nlp_create_task:
+    post:
+      operationId: nlpCreateTask
+      summary: "🧠 Crea tareas desde lenguaje natural (ultra-inteligente)"
+      description: |
+        ✅ **ENDPOINT MÁS INTELIGENTE** - Crea tareas desde descripciones naturales.
+        Extrae automáticamente: título, descripción, asignados, fechas, prioridades.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [teamId, naturalRequest]
+              properties:
+                teamId: 
+                  type: string
+                naturalRequest: 
+                  type: string
+                spaceName: 
+                  type: string
+                taskName: 
+                  type: string
+                description: 
+                  type: string
+                priority: 
+                  type: string
+                assigneeNames: 
+                  type: array
+                  items: 
+                    type: string
+                dueDate: 
+                  type: string
+      responses:
+        "200": 
+          description: "✅ Tarea creada con análisis NLP completo"
+        "400": 
+          description: "❌ Faltan campos obligatorios"
+        "404": 
+          description: "❌ No se pudieron resolver los recursos"
+
+  /commands/find:
+    get:
+      operationId: find
+      summary: "🧠 Búsqueda unificada inteligente (usa este siempre)"
+      description: |
+        ✅ **BÚSQUEDA UNIVERSAL** por nombre para: espacios, carpetas, listas, usuarios.
+        Reemplaza múltiples endpoints básicos.
+      parameters:
+        - name: resource
+          in: query
+          required: true
+          schema: 
+            type: string
+            enum: [space, folder, list, user]
+        - name: teamId
+          in: query
+          required: false
+          schema: 
+            type: string
+        - name: spaceId
+          in: query
+          required: false
+          schema: 
+            type: string
+        - name: folderId
+          in: query
+          required: false
+          schema: 
+            type: string
+        - name: name
+          in: query
+          required: true
+          schema: 
+            type: string
+      responses:
+        "200": 
+          description: "✅ Recursos encontrados"
+
   /health:
     get:
       operationId: health
-      responses:
-        "200": { description: OK }
+      summary: "Health check del servidor"
+      responses: 
+        "200": 
+          description: "✅ Servidor funcionando"
+
   /api/team:
     get:
       operationId: listTeams
-      responses:
-        "200": { description: Teams JSON }
-  /api/team/{teamId}/member:
+      summary: "📋 Lista equipos disponibles"
+      responses: 
+        "200": 
+          description: "✅ Lista de equipos JSON"
+
+  /commands/workspaces:
     get:
-      operationId: listTeamMembers
-      summary: "Lista todos los miembros de un equipo"
+      operationId: getWorkspaces
+      summary: "📋 Lista workspaces disponibles"
+      responses: 
+        "200": 
+          description: "✅ Lista de workspaces"
+
+  /commands/search_tasks:
+    get:
+      operationId: searchTasks
+      summary: "🔍 Búsqueda avanzada de tareas"
       parameters:
         - name: teamId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: "ID del equipo"
-      responses:
-        "200":
-          description: "Lista de miembros del equipo"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  members:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        user:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                            username:
-                              type: string
-                            email:
-                              type: string
-                            color:
-                              type: string
-                            profilePicture:
-                              type: string
-                        invited_by:
-                          type: object
-  /api/team/{teamId}/space:
-    get:
-      operationId: listSpaces
-      parameters:
-        - { name: teamId, in: path, required: true, schema: { type: string } }
-      responses:
-        "200": { description: Spaces JSON }
-  /api/space/{spaceId}/folder:
-    get:
-      operationId: listFolders
-      summary: "Lista todas las carpetas dentro de un espacio"
-      parameters:
-        - name: spaceId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: "ID del espacio"
-        - name: archived
           in: query
           required: false
-          schema:
-            type: boolean
-            default: false
-          description: "Incluir carpetas archivadas"
-      responses:
-        "200":
-          description: "Lista de carpetas en el espacio"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  folders:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                        name:
-                          type: string
-                        orderindex:
-                          type: integer
-                        override_statuses:
-                          type: boolean
-                        hidden:
-                          type: boolean
-                        space:
-                          type: object
-                        task_count:
-                          type: string
-                        archived:
-                          type: boolean
-  /api/space/{spaceId}/list:
-    get:
-      operationId: listListsInSpace
-      summary: "Lista todas las listas directamente en un espacio (sin carpeta)"
-      parameters:
-        - name: spaceId
-          in: path
-          required: true
-          schema:
+          schema: 
             type: string
-          description: "ID del espacio"
-        - name: archived
+        - name: spaceId
           in: query
           required: false
-          schema:
-            type: boolean
-            default: false
-          description: "Incluir listas archivadas"
-      responses:
-        "200":
-          description: "Lista de listas en el espacio"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lists:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                        name:
-                          type: string
-                        orderindex:
-                          type: integer
-                        content:
-                          type: string
-                        status:
-                          type: object
-                        priority:
-                          type: object
-                        assignee:
-                          type: object
-                        task_count:
-                          type: integer
-                        due_date:
-                          type: string
-                        start_date:
-                          type: string
-                        folder:
-                          type: object
-                        space:
-                          type: object
-                        archived:
-                          type: boolean
-  /api/folder/{folderId}/list:
-    get:
-      operationId: listListsInFolder
-      summary: "Lista todas las listas dentro de una carpeta específica"
-      parameters:
-        - name: folderId
-          in: path
-          required: true
-          schema:
+          schema: 
             type: string
-          description: "ID de la carpeta"
-        - name: archived
+        - name: spaceName
           in: query
           required: false
-          schema:
-            type: boolean
-            default: false
-          description: "Incluir listas archivadas"
-      responses:
-        "200":
-          description: "Lista de listas en la carpeta"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  lists:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: string
-                        name:
-                          type: string
-                        orderindex:
-                          type: integer
-                        content:
-                          type: string
-                        status:
-                          type: object
-                        priority:
-                          type: object
-                        assignee:
-                          type: object
-                        task_count:
-                          type: integer
-                        due_date:
-                          type: string
-                        start_date:
-                          type: string
-                        folder:
-                          type: object
-                        space:
-                          type: object
-                        archived:
-                          type: boolean
-  /api/space/{spaceId}:
-    get:
-      operationId: getSpace
-      summary: "Obtiene información detallada de un espacio específico"
-      parameters:
-        - name: spaceId
-          in: path
-          required: true
-          schema:
+          schema: 
             type: string
-          description: "ID del espacio"
-      responses:
-        "200":
-          description: "Información detallada del espacio"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  name:
-                    type: string
-                  private:
-                    type: boolean
-                  statuses:
-                    type: array
-                  multiple_assignees:
-                    type: boolean
-                  features:
-                    type: object
-                  archived:
-                    type: boolean
-  /api/folder/{folderId}:
-    get:
-      operationId: getFolder
-      summary: "Obtiene información detallada de una carpeta específica"
-      parameters:
-        - name: folderId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: "ID de la carpeta"
-      responses:
-        "200":
-          description: "Información detallada de la carpeta"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  name:
-                    type: string
-                  orderindex:
-                    type: integer
-                  override_statuses:
-                    type: boolean
-                  hidden:
-                    type: boolean
-                  space:
-                    type: object
-                  task_count:
-                    type: string
-                  lists:
-                    type: array
-                  archived:
-                    type: boolean
-  /api/list/{listId}:
-    get:
-      operationId: getList
-      summary: "Obtiene información detallada de una lista específica"
-      parameters:
-        - name: listId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: "ID de la lista"
-      responses:
-        "200":
-          description: "Información detallada de la lista"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  name:
-                    type: string
-                  orderindex:
-                    type: integer
-                  content:
-                    type: string
-                  status:
-                    type: object
-                  priority:
-                    type: object
-                  assignee:
-                    type: object
-                  task_count:
-                    type: integer
-                  due_date:
-                    type: string
-                  start_date:
-                    type: string
-                  folder:
-                    type: object
-                  space:
-                    type: object
-                  statuses:
-                    type: array
-                  archived:
-                    type: boolean
-  /api/list/{listId}/task:
-    get:
-      operationId: listTasks
-      parameters:
-        - name: listId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Tasks JSON
-    post:
-      operationId: createTask
-      parameters:
-        - { name: listId, in: path, required: true, schema: { type: string } }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name: { type: string }
-                description: { type: string }
-                assignees: { type: array, items: { type: integer } }
-              required: [name]
-      responses:
-        "200": { description: Task JSON }
-  /api/task/{taskId}:
-    get:
-      operationId: getTask
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Complete Task Details JSON (includes assignees, status, dates, attachments, etc.)
-    put:
-      operationId: updateTask
-      summary: "Actualiza una tarea existente"
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: "ID de la tarea"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  description: "Nuevo nombre de la tarea"
-                description:
-                  type: string
-                  description: "Nueva descripción"
-                status:
-                  type: string
-                  description: "Nuevo status"
-                priority:
-                  type: integer
-                  description: "Nueva prioridad (1=urgent, 2=high, 3=normal, 4=low)"
-                assignees:
-                  type: object
-                  properties:
-                    add:
-                      type: array
-                      items:
-                        type: integer
-                      description: "IDs de usuarios a asignar"
-                    rem:
-                      type: array
-                      items:
-                        type: integer
-                      description: "IDs de usuarios a desasignar"
-                due_date:
-                  type: integer
-                  description: "Fecha límite (timestamp Unix en ms)"
-      responses:
-        "200":
-          description: "Tarea actualizada exitosamente"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                  name:
-                    type: string
-                  status:
-                    type: object
-                  assignees:
-                    type: array
-  /oauth/authorize:
-    get:
-      operationId: startOAuth
-      responses:
-        "302":
-          description: Redirect to ClickUp OAuth
-  /oauth/callback:
-    get:
-      operationId: oauthCallback
-      parameters:
-        - name: code
+        - name: assigneeName
           in: query
-          required: true
-          schema:
+          required: false
+          schema: 
             type: string
-      responses:
-        "200":
-          description: OAuth Success
-  /oauth/status:
-    get:
-      operationId: oauthStatus
-      responses:
-        "200":
-          description: OAuth Authentication Status
+        - name: nameContains
+          in: query
+          required: false
+          schema: 
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema: 
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema: 
+            type: integer
+            default: 100
+      responses: 
+        "200": 
+          description: "✅ Lista de tareas filtradas"
+
   /commands/executive_report:
     get:
       operationId: executiveReport
-      summary: "Genera reporte ejecutivo con filtrado estricto de fechas"
-      description: "Genera un reporte ejecutivo impersonal con filtrado estricto por fechas y resolución inteligente de espacios"
+      summary: "📊 Reporte ejecutivo con rango de fechas"
       parameters:
         - name: teamId
           in: query
           required: true
-          schema:
+          schema: 
             type: string
         - name: spaceName
           in: query
           required: true
-          schema:
+          schema: 
             type: string
         - name: from
           in: query
           required: true
-          schema:
+          schema: 
             type: string
-          description: "Fecha desde (ISO: 2024-01-15 o timestamp)"
         - name: to
           in: query
           required: true
-          schema:
+          schema: 
             type: string
-          description: "Fecha hasta (ISO: 2024-01-15 o timestamp)"
         - name: timezone
           in: query
           required: false
-          schema:
+          schema: 
             type: string
             default: "Europe/Madrid"
-          description: "Zona horaria para el reporte"
-      responses:
-        "200":
-          description: "Reporte ejecutivo generado exitosamente"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  report:
-                    type: object
-                  metadata:
-                    type: object
-  /commands/create_task_validated:
+      responses: 
+        "200": 
+          description: "✅ Reporte generado"
+
+  /commands/search_docs:
+    get:
+      operationId: searchDocs
+      summary: "📄 Lista todos los documentos"
+      parameters:
+        - name: workspaceId
+          in: query
+          required: true
+          schema: 
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema: 
+            type: integer
+            default: 50
+        - name: creator
+          in: query
+          required: false
+          schema: 
+            type: string
+        - name: deleted
+          in: query
+          required: false
+          schema: 
+            type: boolean
+            default: false
+        - name: archived
+          in: query
+          required: false
+          schema: 
+            type: boolean
+            default: false
+      responses: 
+        "200": 
+          description: "✅ Lista de documentos"
+
+  /commands/get_doc:
+    get:
+      operationId: getDoc
+      summary: "📄 Obtiene detalles de un documento"
+      parameters:
+        - name: workspaceId
+          in: query
+          required: true
+          schema: 
+            type: string
+        - name: docId
+          in: query
+          required: true
+          schema: 
+            type: string
+      responses: 
+        "200": 
+          description: "✅ Detalles del documento"
+
+  /commands/get_doc_pages:
+    get:
+      operationId: getDocPages
+      summary: "📄 Obtiene contenido de páginas del documento"
+      parameters:
+        - name: workspaceId
+          in: query
+          required: true
+          schema: 
+            type: string
+        - name: docId
+          in: query
+          required: true
+          schema: 
+            type: string
+      responses: 
+        "200": 
+          description: "✅ Contenido de páginas del documento"
+
+  /api/team/{teamId}/member:
+    get:
+      operationId: listTeamMembers
+      summary: "⚠️ Lista miembros de equipo (usa /commands/find con resource=user)"
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: 
+            type: string
+      responses: 
+        "200": 
+          description: "Lista de miembros del equipo"
+
+  /api/team/{teamId}/space:
+    get:
+      operationId: listSpaces
+      summary: "⚠️ Lista espacios (usa /commands/find con resource=space)"
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: 
+            type: string
+        - name: archived
+          in: query
+          required: false
+          schema: 
+            type: boolean
+            default: false
+      responses: 
+        "200": 
+          description: "Espacios del equipo"
+
+  /api/space/{spaceId}/folder:
+    get:
+      operationId: listFolders
+      summary: "⚠️ PELIGROSO - causa ResponseTooLargeError (usa smart_find_folder)"
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema: 
+            type: string
+        - name: archived
+          in: query
+          required: false
+          schema: 
+            type: boolean
+            default: false
+      responses: 
+        "200": 
+          description: "Carpetas en el espacio"
+
+  /api/list/{listId}/task:
+    get:
+      operationId: listTasks
+      summary: "⚠️ Lista tareas (usa search_tasks para mejor filtrado)"
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema: 
+            type: string
+      responses: 
+        "200": 
+          description: "Tareas de la lista"
     post:
-      operationId: createTaskValidated
-      summary: "Crea tarea con validación completa de campos obligatorios"
-      description: "Crea una nueva tarea validando todos los campos obligatorios y resolviendo automáticamente espacios, usuarios y listas"
+      operationId: createTask
+      summary: "⚠️ Crea tarea básica (usa smart_create_task o nlp_create_task)"
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema: 
+            type: string
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - teamId
-                - spaceName
-                - taskName
-                - description
-                - assigneeNames
-                - dueDate
+              required: [name]
               properties:
-                teamId:
+                name: 
                   type: string
-                  description: "ID del equipo"
-                spaceName:
+                description: 
                   type: string
-                  description: "Nombre del espacio (obligatorio)"
-                taskName:
-                  type: string
-                  description: "Nombre de la tarea (obligatorio)"
-                description:
-                  type: string
-                  description: "Descripción de la tarea (obligatorio)"
-                assigneeNames:
+                assignees: 
                   type: array
-                  items:
-                    type: string
-                  description: "Array de nombres de responsables (obligatorio)"
-                dueDate:
-                  type: string
-                  description: "Fecha límite ISO o timestamp (obligatorio)"
-                priority:
-                  type: string
-                  enum: [urgent, high, normal, low]
-                  default: normal
-                folderName:
-                  type: string
-                  description: "Nombre de carpeta (opcional)"
-                listName:
-                  type: string
-                  description: "Nombre de lista (opcional, usa primera disponible si no se especifica)"
-                status:
-                  type: string
-                  default: "to do"
-      responses:
-        "200":
-          description: "Tarea creada exitosamente"
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                  task:
-                    type: object
-                  metadata:
-                    type: object
-        "400":
-          description: "Campos obligatorios faltantes o usuarios no encontrados"
-  /commands/find_space_smart:
+                  items: 
+                    type: integer
+      responses: 
+        "200": 
+          description: "Tarea creada"
+
+  /api/task/{taskId}:
     get:
-      operationId: findSpace
+      operationId: getTask
+      summary: "📋 Obtiene detalles de tarea"
       parameters:
-        - { name: teamId, in: query, required: true, schema: { type: string } }
-        - { name: name, in: query, required: true, schema: { type: string } }
-      responses:
-        "200": { description: Matched spaces }
-  /commands/find_folder:
-    get:
-      operationId: findFolder
+        - name: taskId
+          in: path
+          required: true
+          schema: 
+            type: string
+      responses: 
+        "200": 
+          description: "Detalles completos de la tarea"
+    put:
+      operationId: updateTask
+      summary: "📝 Actualiza una tarea"
       parameters:
-        - { name: spaceId, in: query, required: true, schema: { type: string } }
-        - { name: name, in: query, required: true, schema: { type: string } }
-      responses:
-        "200": { description: Matched folders }
-  /commands/find_list:
-    get:
-      operationId: findList
-      parameters:
-        - { name: spaceId, in: query, required: false, schema: { type: string } }
-        - { name: folderId, in: query, required: false, schema: { type: string } }
-        - { name: name, in: query, required: true, schema: { type: string } }
-      responses:
-        "200": { description: Matched lists }
-  /commands/search_tasks:
-    get:
-      operationId: searchTasks
-      parameters:
-        - { name: teamId, in: query, required: false, schema: { type: string } }
-        - { name: spaceId, in: query, required: false, schema: { type: string } }
-        - { name: spaceName, in: query, required: false, schema: { type: string } }
-        - { name: folderId, in: query, required: false, schema: { type: string } }
-        - { name: listId, in: query, required: false, schema: { type: string } }
-        - { name: assigneeId, in: query, required: false, schema: { type: string } }
-        - { name: assigneeName, in: query, required: false, schema: { type: string } }
-        - { name: nameContains, in: query, required: false, schema: { type: string } }
-        - { name: updatedFrom, in: query, required: false, schema: { type: string, description: "ISO or epoch ms" } }
-        - { name: updatedTo, in: query, required: false, schema: { type: string, description: "ISO or epoch ms" } }
-        - { name: status, in: query, required: false, schema: { type: string } }
-        - { name: page, in: query, required: false, schema: { type: string } }
-        - { name: limit, in: query, required: false, schema: { type: integer, default: 100 } }
-      responses:
-        "200": { description: Tasks list }
-  /commands/find_user:
-    get:
-      operationId: findUser
-      parameters:
-        - { name: teamId, in: query, required: true, schema: { type: string } }
-        - { name: name, in: query, required: true, schema: { type: string } }
-      responses:
-        "200": { description: Matched users }
+        - name: taskId
+          in: path
+          required: true
+          schema: 
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: 
+                  type: string
+                description: 
+                  type: string
+                status: 
+                  type: string
+                priority: 
+                  type: integer
+                assignees:
+                  type: object
+                  properties:
+                    add: 
+                      type: array
+                      items: 
+                        type: integer
+                    rem: 
+                      type: array
+                      items: 
+                        type: integer
+                due_date: 
+                  type: integer
+      responses: 
+        "200": 
+          description: "✅ Tarea actualizada"
+
   /commands/task_comments:
     get:
       operationId: taskComments
+      summary: "💬 Comentarios de tarea"
       parameters:
-        - { name: taskId, in: query, required: true, schema: { type: string } }
-        - { name: limit, in: query, required: false, schema: { type: integer } }
-      responses:
-        "200": { description: Comments list }
-  /commands/workspaces:
-    get:
-      operationId: getWorkspaces
-      responses:
-        "200": { description: List of workspaces }
-  /commands/search_docs:
-    get:
-      operationId: searchDocs
-      parameters:
-        - { name: workspaceId, in: query, required: true, schema: { type: string } }
-        - { name: limit, in: query, required: false, schema: { type: integer, default: 50 } }
-        - { name: creator, in: query, required: false, schema: { type: string } }
-        - { name: deleted, in: query, required: false, schema: { type: boolean, default: false } }
-        - { name: archived, in: query, required: false, schema: { type: boolean, default: false } }
-        - { name: parent_id, in: query, required: false, schema: { type: string } }
-        - { name: parent_type, in: query, required: false, schema: { type: string } }
-      responses:
-        "200": { description: Documents list }
-  /commands/get_doc:
-    get:
-      operationId: getDoc
-      parameters:
-        - { name: workspaceId, in: query, required: true, schema: { type: string } }
-        - { name: docId, in: query, required: true, schema: { type: string } }
-      responses:
-        "200": { description: Document details }
-  /commands/get_doc_pages:
-    get:
-      operationId: getDocPages
-      parameters:
-        - { name: workspaceId, in: query, required: true, schema: { type: string } }
-        - { name: docId, in: query, required: true, schema: { type: string } }
-      responses:
-        "200": { description: Document pages content }
-  /commands/find_docs:
-    get:
-      operationId: findDocs
-      parameters:
-        - { name: workspaceId, in: query, required: true, schema: { type: string } }
-        - { name: name, in: query, required: true, schema: { type: string } }
-        - { name: limit, in: query, required: false, schema: { type: integer, default: 50 } }
-      responses:
-        "200": { description: Matched documents }
-components:
+        - name: taskId
+          in: query
+          required: true
+          schema: 
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema: 
+            type: integer
+      responses: 
+        "200": 
+          description: "✅ Lista de comentarios"
+
+components: 
   schemas: {}
+
 security:
   - {}

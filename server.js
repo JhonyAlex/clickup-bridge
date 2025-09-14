@@ -739,6 +739,608 @@ app.get("/commands/find_user", async (req, res) => {
   }
 });
 
+/** ------------------ SMART SEARCH ENDPOINTS (Anti-ResponseTooLargeError) ------------------ **/
+
+// Endpoint inteligente para buscar carpetas que evita ResponseTooLargeError
+app.get("/commands/smart_find_folder", async (req, res) => {
+  const { spaceId, name, limit = 20 } = req.query;
+  
+  if (!spaceId) {
+    return res.status(400).json({ error: "spaceId is required" });
+  }
+  
+  try {
+    // Si no hay filtro de nombre, solo devolver las primeras carpetas sin buscar todo
+    if (!name) {
+      return res.status(400).json({ 
+        error: "name filter is required to prevent ResponseTooLargeError",
+        suggestion: "Use 'name' parameter to filter folders (e.g., 'Super', 'Client', etc.)"
+      });
+    }
+    
+    // Intento optimizado: buscar con filtro aplicado
+    const needle = String(name).toLowerCase();
+    
+    // Usar el endpoint existente que ya maneja bien los filtros
+    const r = await cuGet(`/space/${spaceId}/folder`, { 
+      archived: "false",
+      limit: Math.min(parseInt(limit) || 20, 100)
+    });
+    
+    if (!r.ok) {
+      // Si falla por ResponseTooLargeError, sugerir filtros más específicos
+      if (r.status === 413 || (r.data && String(r.data).includes("ResponseTooLargeError"))) {
+        return res.status(413).json({
+          error: "ResponseTooLargeError: too many folders in space",
+          suggestion: `Try a more specific search term. Current filter: "${name}"`,
+          solutions: [
+            "Use more specific keywords (e.g., instead of 'Super' try 'Super Genéricos')",
+            "Add additional filters to narrow down results",
+            "Contact admin to organize folders better"
+          ]
+        });
+      }
+      return res.status(r.status).json(r.data);
+    }
+    
+    // Filtrar en memoria para búsqueda inteligente
+    const hits = (r.data?.folders || []).filter((f) => 
+      (f?.name || "").toLowerCase().includes(needle)
+    );
+    
+    res.json({ 
+      hits,
+      total: hits.length,
+      searched_term: name,
+      space_id: spaceId,
+      suggestion: hits.length === 0 ? "Try a different search term or check folder names" : null
+    });
+    
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Endpoint inteligente para crear tareas con búsqueda automática MEJORADO
+app.post("/commands/smart_create_task", async (req, res) => {
+  const { 
+    teamId,
+    spaceName,
+    folderNameFilter, // Filtro específico manual
+    listNameFilter,   // Filtro específico manual
+    taskName,
+    description,
+    assigneeNames,
+    dueDate,
+    priority = 'normal',
+    // NUEVO: Contexto natural para extracción automática
+    naturalContext    // Ej: "crea una tarea en clientes, somos puertas"
+  } = req.body || {};
+  
+  // Validaciones básicas
+  if (!teamId || !spaceName || !taskName || !description) {
+    return res.status(400).json({ 
+      error: "teamId, spaceName, taskName y description son obligatorios" 
+    });
+  }
+
+  try {
+    // 1. Buscar espacio
+    const normalizedSpaceName = normalizeSpaceName(spaceName);
+    const spaceResponse = await cuGet(`/team/${teamId}/space`, { archived: "false" });
+    if (!spaceResponse.ok) return res.status(spaceResponse.status).json(spaceResponse.data);
+    
+    const spaces = (spaceResponse.data?.spaces || []).filter(s => 
+      (s?.name || "").toLowerCase().includes(normalizedSpaceName.toLowerCase())
+    );
+    
+    if (spaces.length === 0) {
+      return res.status(404).json({ 
+        error: `Espacio '${spaceName}' no encontrado` 
+      });
+    }
+    
+    const space = spaces[0];
+    
+    // 2. LÓGICA INTELIGENTE: Extraer términos de búsqueda automáticamente
+    let smartFolderTerms = [];
+    let smartListTerms = [];
+    
+    if (naturalContext) {
+      // Extraer palabras clave del contexto natural
+      const contextWords = naturalContext
+        .toLowerCase()
+        .replace(/[^\w\s]/g, ' ') // Remover puntuación
+        .split(/\s+/)
+        .filter(word => 
+          word.length > 2 && // Palabras de más de 2 caracteres
+          !['crea', 'crear', 'una', 'tarea', 'en', 'el', 'la', 'los', 'las', 'de', 'del', 'con', 'para', 'por', 'que', 'como', 'cuando', 'donde'].includes(word)
+        );
+      
+      // Los primeros términos significativos se usan para carpetas
+      smartFolderTerms = contextWords.slice(0, 3);
+      smartListTerms = ['tarea', 'task', 'proyecto', 'list']; // Términos comunes para listas
+    }
+    
+    // 3. Buscar carpeta con múltiples estrategias
+    let targetFolderId = null;
+    let folderSearchResult = null;
+    
+    // Estrategia 1: Filtro manual especificado
+    if (folderNameFilter) {
+      try {
+        const folderSearchResponse = await cuGet(`/space/${space.id}/folder`, { archived: "false" });
+        
+        if (folderSearchResponse.ok) {
+          const folders = (folderSearchResponse.data?.folders || []).filter(f => 
+            (f?.name || "").toLowerCase().includes(folderNameFilter.toLowerCase())
+          );
+          
+          if (folders.length > 0) {
+            targetFolderId = folders[0].id;
+            folderSearchResult = {
+              found: true,
+              folder_name: folders[0].name,
+              search_strategy: "manual_filter",
+              search_term: folderNameFilter
+            };
+          }
+        }
+      } catch (error) {
+        // Continuar con otras estrategias
+      }
+    }
+    
+    // Estrategia 2: Búsqueda inteligente con contexto natural
+    if (!targetFolderId && smartFolderTerms.length > 0) {
+      try {
+        const folderSearchResponse = await cuGet(`/space/${space.id}/folder`, { archived: "false" });
+        
+        if (folderSearchResponse.ok) {
+          const folders = folderSearchResponse.data?.folders || [];
+          
+          // Buscar con cada término extraído
+          for (const term of smartFolderTerms) {
+            const matchingFolders = folders.filter(f => 
+              (f?.name || "").toLowerCase().includes(term.toLowerCase())
+            );
+            
+            if (matchingFolders.length > 0) {
+              targetFolderId = matchingFolders[0].id;
+              folderSearchResult = {
+                found: true,
+                folder_name: matchingFolders[0].name,
+                search_strategy: "smart_extraction",
+                search_term: term,
+                extracted_terms: smartFolderTerms,
+                natural_context: naturalContext
+              };
+              break;
+            }
+          }
+          
+          // Si no encuentra con términos individuales, probar combinaciones
+          if (!targetFolderId && smartFolderTerms.length > 1) {
+            const combinedTerm = smartFolderTerms.join(' ');
+            const combinedFolders = folders.filter(f => {
+              const folderName = (f?.name || "").toLowerCase();
+              return smartFolderTerms.some(term => folderName.includes(term.toLowerCase()));
+            });
+            
+            if (combinedFolders.length > 0) {
+              targetFolderId = combinedFolders[0].id;
+              folderSearchResult = {
+                found: true,
+                folder_name: combinedFolders[0].name,
+                search_strategy: "smart_combination",
+                search_terms: smartFolderTerms,
+                natural_context: naturalContext
+              };
+            }
+          }
+        }
+      } catch (error) {
+        folderSearchResult = {
+          found: false,
+          error: "Error en búsqueda inteligente",
+          search_strategy: "smart_extraction_failed",
+          extracted_terms: smartFolderTerms
+        };
+      }
+    }
+    
+    // Estrategia 3: Si no encuentra nada, no usar carpeta específica
+    if (!folderSearchResult) {
+      folderSearchResult = {
+        found: false,
+        search_strategy: "none",
+        message: "No se especificó filtro de carpeta, usando espacio raíz"
+      };
+    }
+    
+    // 4. Buscar lista con lógica similar
+    let targetListId = null;
+    let listSearchResult = null;
+    
+    const listsPath = targetFolderId ? `/folder/${targetFolderId}/list` : `/space/${space.id}/list`;
+    const listsResponse = await cuGet(listsPath, { archived: "false" });
+    
+    if (listsResponse.ok) {
+      const lists = listsResponse.data?.lists || [];
+      
+      // Estrategia 1: Filtro manual
+      if (listNameFilter) {
+        const matchingLists = lists.filter(l => 
+          (l?.name || "").toLowerCase().includes(listNameFilter.toLowerCase())
+        );
+        
+        if (matchingLists.length > 0) {
+          targetListId = matchingLists[0].id;
+          listSearchResult = {
+            found: true,
+            list_name: matchingLists[0].name,
+            search_strategy: "manual_filter",
+            search_term: listNameFilter
+          };
+        }
+      }
+      
+      // Estrategia 2: Búsqueda inteligente
+      if (!targetListId && naturalContext) {
+        for (const term of smartListTerms) {
+          const matchingLists = lists.filter(l => 
+            (l?.name || "").toLowerCase().includes(term.toLowerCase())
+          );
+          
+          if (matchingLists.length > 0) {
+            targetListId = matchingLists[0].id;
+            listSearchResult = {
+              found: true,
+              list_name: matchingLists[0].name,
+              search_strategy: "smart_extraction",
+              search_term: term
+            };
+            break;
+          }
+        }
+      }
+      
+      // Estrategia 3: Usar primera lista disponible
+      if (!targetListId && lists.length > 0) {
+        targetListId = lists[0].id;
+        listSearchResult = {
+          found: true,
+          list_name: lists[0].name,
+          search_strategy: "auto_select_first",
+          auto_selected: true
+        };
+      }
+    }
+    
+    if (!targetListId) {
+      return res.status(404).json({ 
+        error: "No se encontró lista válida",
+        folder_search: folderSearchResult,
+        list_search: { found: false, error: "No lists available" }
+      });
+    }
+    
+    // 5. Resolver usuarios si se especifican
+    let assigneeIds = [];
+    let assigneeSearchResult = null;
+    
+    if (assigneeNames && assigneeNames.length > 0) {
+      const teamResponse = await cuGet(`/team/${teamId}`);
+      if (teamResponse.ok) {
+        const allMembers = teamResponse.data?.team?.members || [];
+        const notFound = [];
+        
+        for (const assigneeName of assigneeNames) {
+          const member = allMembers.find(m => 
+            m.user && (
+              (m.user.username || "").toLowerCase().includes(assigneeName.toLowerCase()) ||
+              (m.user.email || "").toLowerCase().includes(assigneeName.toLowerCase())
+            )
+          );
+          
+          if (member) {
+            assigneeIds.push(member.user.id);
+          } else {
+            notFound.push(assigneeName);
+          }
+        }
+        
+        assigneeSearchResult = {
+          resolved: assigneeIds.length,
+          not_found: notFound
+        };
+      }
+    }
+    
+    // 6. Crear tarea
+    const taskData = {
+      name: taskName,
+      description: description,
+      ...(assigneeIds.length > 0 && { assignees: assigneeIds }),
+      ...(dueDate && { due_date: parseDate(dueDate) }),
+      priority: priority === 'urgent' ? 1 : priority === 'high' ? 2 : priority === 'low' ? 4 : 3
+    };
+    
+    const createResponse = await cuPost(`/list/${targetListId}/task`, taskData);
+    
+    res.status(createResponse.status).json({
+      ...createResponse.data,
+      search_metadata: {
+        space_used: space.name,
+        folder_search: folderSearchResult,
+        list_search: listSearchResult,
+        assignee_search: assigneeSearchResult,
+        intelligence_used: !!naturalContext,
+        extracted_terms: naturalContext ? smartFolderTerms : null
+      }
+    });
+    
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Endpoint inteligente para buscar documentos con filtros automáticos
+app.get("/commands/smart_find_docs", async (req, res) => {
+  const { workspaceId, nameFilter, limit = 25 } = req.query;
+  
+  if (!workspaceId) {
+    return res.status(400).json({ error: "workspaceId is required" });
+  }
+  
+  if (!nameFilter) {
+    return res.status(400).json({ 
+      error: "nameFilter is required to prevent ResponseTooLargeError",
+      suggestion: "Use 'nameFilter' parameter to search documents (e.g., 'report', 'manual', etc.)"
+    });
+  }
+
+  try {
+    // Buscar con límite para evitar ResponseTooLargeError
+    const r = await cuGetV3(`/workspaces/${workspaceId}/docs`, { 
+      limit: Math.min(parseInt(limit) || 25, 50),
+      deleted: false,
+      archived: false
+    });
+    
+    if (!r.ok) {
+      if (r.status === 413 || (r.data && String(r.data).includes("ResponseTooLargeError"))) {
+        return res.status(413).json({
+          error: "ResponseTooLargeError: too many documents in workspace",
+          suggestion: `Try a more specific filter. Current: "${nameFilter}"`,
+          solutions: [
+            "Use more specific keywords",
+            "Contact admin to organize documents better",
+            "Use date ranges if available"
+          ]
+        });
+      }
+      return res.status(r.status).json(r.data);
+    }
+
+    // Filtrar en memoria
+    const needle = String(nameFilter).toLowerCase();
+    const hits = (r.data.docs || []).filter(doc => 
+      (doc.name || "").toLowerCase().includes(needle)
+    );
+
+    res.json({ 
+      hits,
+      total: hits.length,
+      searched_term: nameFilter,
+      workspace_id: workspaceId,
+      suggestion: hits.length === 0 ? "Try a different search term" : null
+    });
+    
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Endpoint ULTRA INTELIGENTE para procesamiento de lenguaje natural
+app.post("/commands/nlp_create_task", async (req, res) => {
+  const { 
+    teamId,
+    naturalRequest, // Ej: "crea una tarea en clientes, somos puertas, asignar a juan, urgente"
+    // Campos opcionales que override el NLP
+    spaceName,
+    taskName,
+    description,
+    priority,
+    assigneeNames,
+    dueDate
+  } = req.body || {};
+  
+  if (!teamId || !naturalRequest) {
+    return res.status(400).json({ 
+      error: "teamId y naturalRequest son obligatorios",
+      example: "naturalRequest: 'crea una tarea en clientes, somos puertas, revisar propuesta, asignar a juan'"
+    });
+  }
+
+  try {
+    // ANÁLISIS NLP DEL TEXTO NATURAL
+    const nlpResult = parseNaturalRequest(naturalRequest);
+    
+    // Combinar datos extraídos con override manual
+    const finalData = {
+      teamId,
+      spaceName: spaceName || nlpResult.spaceName || 'clientes',
+      naturalContext: naturalRequest,
+      taskName: taskName || nlpResult.taskName || 'Tarea extraída automáticamente',
+      description: description || nlpResult.description || `Tarea creada desde: "${naturalRequest}"`,
+      priority: priority || nlpResult.priority || 'normal',
+      assigneeNames: assigneeNames || nlpResult.assigneeNames || [],
+      dueDate: dueDate || nlpResult.dueDate
+    };
+    
+    // Usar el endpoint inteligente existente
+    const smartRequest = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(finalData)
+    };
+    
+    // Llamar internamente al endpoint smart_create_task
+    const internalUrl = `http://localhost:${PORT}/commands/smart_create_task`;
+    const response = await fetch(internalUrl, smartRequest);
+    const result = await response.json();
+    
+    // Agregar metadatos de NLP
+    if (response.ok && result.search_metadata) {
+      result.search_metadata.nlp_analysis = nlpResult;
+      result.search_metadata.original_request = naturalRequest;
+    }
+    
+    res.status(response.status).json(result);
+    
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Función para parsear peticiones en lenguaje natural
+function parseNaturalRequest(text) {
+  const normalizedText = text.toLowerCase().trim();
+  
+  // Extraer espacio (clientes, proyectos, etc.)
+  let spaceName = null;
+  const spacePatterns = [
+    /(?:en |del |espacio |space )([\w\s]+?)(?:,|\s+(?:crear|crea|para|asign|urgente|normal|baj|alt))/g,
+    /(?:clientes?|cliente)/g,
+    /(?:proyectos?|proyecto)/g,
+    /(?:ventas?|venta)/g
+  ];
+  
+  for (const pattern of spacePatterns) {
+    const match = pattern.exec(normalizedText);
+    if (match) {
+      spaceName = match[1] ? match[1].trim() : match[0].trim();
+      break;
+    }
+  }
+  
+  // Extraer términos para carpetas (empresas, nombres de clientes)
+  const folderTerms = [];
+  const excludeWords = ['crea', 'crear', 'una', 'tarea', 'en', 'el', 'la', 'los', 'las', 'de', 'del', 'con', 'para', 'por', 'que', 'como', 'cuando', 'donde', 'asignar', 'asignado', 'urgente', 'normal', 'baja', 'alta', 'prioridad'];
+  
+  // Buscar nombres propios o términos únicos
+  const words = normalizedText
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(word => 
+      word.length > 2 && 
+      !excludeWords.includes(word) &&
+      !/^\d+$/.test(word) // No números
+    );
+  
+  // Los primeros 2-3 términos significativos después del espacio son candidatos a carpeta
+  const spaceIndex = words.findIndex(w => ['en', 'del', 'espacio'].includes(w));
+  if (spaceIndex >= 0 && spaceIndex < words.length - 1) {
+    folderTerms.push(...words.slice(spaceIndex + 2, spaceIndex + 5));
+  } else {
+    folderTerms.push(...words.slice(0, 3));
+  }
+  
+  // Extraer nombre de tarea
+  let taskName = null;
+  const taskPatterns = [
+    /(?:tarea|task)[\s:]+"([^"]+)"/g,
+    /(?:para|sobre|revisar|crear|hacer|trabajar en)\s+([\w\s]+?)(?:,|\s+(?:asign|urgent|normal|baj|alt|$))/g
+  ];
+  
+  for (const pattern of taskPatterns) {
+    const match = pattern.exec(normalizedText);
+    if (match && match[1]) {
+      taskName = match[1].trim();
+      break;
+    }
+  }
+  
+  // Extraer descripción automática
+  let description = `Tarea creada automáticamente desde: "${text}"`;
+  if (folderTerms.length > 0) {
+    description += `\nCliente/Carpeta: ${folderTerms.join(', ')}`;
+  }
+  
+  // Extraer prioridad
+  let priority = 'normal';
+  if (/urgente?|urgent|alta?|high/i.test(normalizedText)) {
+    priority = 'urgent';
+  } else if (/baja?|low/i.test(normalizedText)) {
+    priority = 'low';
+  }
+  
+  // Extraer asignados
+  const assigneeNames = [];
+  const assigneePatterns = [
+    /(?:asignar?|asignado)\s+a\s+([\w\s,]+?)(?:,|\s+(?:urgent|normal|baj|alt|$))/g,
+    /(?:para|@)\s*([\w\.]+@[\w\.]+)/g, // emails
+    /(?:para|@)\s*([\w]+)(?:\s|$|,)/g  // usernames
+  ];
+  
+  for (const pattern of assigneePatterns) {
+    let match;
+    while ((match = pattern.exec(normalizedText)) !== null) {
+      if (match[1]) {
+        // Separar múltiples nombres
+        const names = match[1].split(',').map(n => n.trim()).filter(n => n.length > 0);
+        assigneeNames.push(...names);
+      }
+    }
+  }
+  
+  // Extraer fecha límite
+  let dueDate = null;
+  const datePatterns = [
+    /(?:para|fecha|límite|deadline)\s*:?\s*(\d{4}-\d{2}-\d{2})/g,
+    /(?:para|fecha|límite|deadline)\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/g,
+    /(?:mañana|tomorrow)/g,
+    /(?:próxima semana|next week)/g
+  ];
+  
+  for (const pattern of datePatterns) {
+    const match = pattern.exec(normalizedText);
+    if (match) {
+      if (match[1]) {
+        dueDate = match[1];
+      } else if (match[0].includes('mañana')) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        dueDate = tomorrow.toISOString().split('T')[0];
+      } else if (match[0].includes('próxima') || match[0].includes('next')) {
+        const nextWeek = new Date();
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        dueDate = nextWeek.toISOString().split('T')[0];
+      }
+      break;
+    }
+  }
+  
+  return {
+    spaceName,
+    folderTerms,
+    taskName,
+    description,
+    priority,
+    assigneeNames,
+    dueDate,
+    confidence: {
+      space: spaceName ? 0.8 : 0.2,
+      folder: folderTerms.length > 0 ? 0.9 : 0.1,
+      task: taskName ? 0.9 : 0.3,
+      assignee: assigneeNames.length > 0 ? 0.8 : 0.0,
+      priority: priority !== 'normal' ? 0.7 : 0.3,
+      date: dueDate ? 0.9 : 0.0
+    }
+  };
+}
+
 /** ------------------ DOCS ENDPOINTS (API v3) ------------------ **/
 
 // Función auxiliar para API v3 (documentos)
