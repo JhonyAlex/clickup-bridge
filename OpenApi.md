@@ -96,6 +96,7 @@ paths:
           description: OAuth Authentication Status
   /commands/executive_report:
     get:
+      operationId: executiveReport
       summary: "Genera reporte ejecutivo con filtrado estricto de fechas"
       description: "Genera un reporte ejecutivo impersonal con filtrado estricto por fechas y resolución inteligente de espacios"
       parameters:
@@ -142,6 +143,7 @@ paths:
                     type: object
   /commands/create_task_validated:
     post:
+      operationId: createTaskValidated
       summary: "Crea tarea con validación completa de campos obligatorios"
       description: "Crea una nueva tarea validando todos los campos obligatorios y resolviendo automáticamente espacios, usuarios y listas"
       requestBody:
