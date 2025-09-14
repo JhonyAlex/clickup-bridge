@@ -129,7 +129,7 @@ paths:
             default: "Europe/Madrid"
           description: "Zona horaria para el reporte"
       responses:
-        200:
+        "200":
           description: "Reporte ejecutivo generado exitosamente"
           content:
             application/json:
@@ -192,7 +192,7 @@ paths:
                   type: string
                   default: "to do"
       responses:
-        200:
+        "200":
           description: "Tarea creada exitosamente"
           content:
             application/json:
@@ -205,7 +205,7 @@ paths:
                     type: object
                   metadata:
                     type: object
-        400:
+        "400":
           description: "Campos obligatorios faltantes o usuarios no encontrados"
   /commands/find_space_smart:
     get:
