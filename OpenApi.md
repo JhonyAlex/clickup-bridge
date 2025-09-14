@@ -30,6 +30,17 @@ paths:
       responses:
         "200": { description: Lists JSON }
   /api/list/{listId}/task:
+    get:
+      operationId: listTasks
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tasks JSON
     post:
       operationId: createTask
       parameters:
@@ -47,6 +58,18 @@ paths:
               required: [name]
       responses:
         "200": { description: Task JSON }
+  /api/task/{taskId}/history:
+    get:
+      operationId: getTaskHistory
+      parameters:
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Task History JSON
   /commands/find_space:
     get:
       operationId: findSpace
