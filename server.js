@@ -14,7 +14,7 @@ let OAUTH_ACCESS_TOKEN = null;
 
 /** ------------------ Utils ------------------ **/
 const AUTH = () => ({
-  Authorization: OAUTH_ACCESS_TOKEN || process.env.CLICKUP_API_TOKEN,
+  Authorization: OAUTH_ACCESS_TOKEN ? `Bearer ${OAUTH_ACCESS_TOKEN}` : process.env.CLICKUP_API_TOKEN,
   "Content-Type": "application/json",
 });
 const j = (r) => r.json().catch(() => ({}));
