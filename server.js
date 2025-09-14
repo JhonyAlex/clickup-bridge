@@ -2,6 +2,7 @@ import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import { readFileSync } from 'fs';
+import https from "https";
 dotenv.config();
 
 const app = express();
@@ -1593,4 +1594,10 @@ app.get("/commands/find", async (req, res) => {
 });
 
 /** ------------------ Start ------------------ **/
-app.listen(PORT, () => console.log(`Bridge ${PORT}`));
+const httpsOptions = {
+  key: readFileSync("key.pem"),
+  cert: readFileSync("cert.pem"),
+};
+https.createServer(httpsOptions, app).listen(PORT, () => {
+  console.log(`Bridge HTTPS running on port ${PORT}`);
+});

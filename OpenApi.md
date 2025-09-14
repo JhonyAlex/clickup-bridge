@@ -15,7 +15,7 @@ info:
     • find - Búsqueda unificada inteligente
     
 servers:
-  - url: http://localhost:3107
+  - url: https://localhost:3107
     description: "Servidor local de desarrollo"
 
 paths:
