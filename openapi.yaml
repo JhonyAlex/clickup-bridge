@@ -126,11 +126,5 @@ paths:
         "200": { description: Created task }
 components:
   schemas: {}
-  securitySchemes:
-    apiKey:
-      type: apiKey
-      in: header
-      name: Authorization
 security:
   - {}
-  - apiKey: []

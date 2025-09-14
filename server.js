@@ -15,12 +15,20 @@ const AUTH = () => ({
   "Content-Type": "application/json",
 });
 const j = (r) => r.json().catch(() => ({}));
-const q = (obj) =>
-  new URLSearchParams(
-    Object.fromEntries(
-      Object.entries(obj || {}).filter(([, v]) => v !== undefined && v !== null && v !== "")
-    )
-  );
+const q = (params = {}) => {
+  const searchParams = new URLSearchParams();
+  for (const key in params) {
+    const value = params[key];
+    if (value !== undefined && value !== null && value !== "") {
+      if (Array.isArray(value)) {
+        value.forEach((v) => searchParams.append(key, v));
+      } else {
+        searchParams.set(key, value);
+      }
+    }
+  }
+  return searchParams;
+};
 const toEpoch = (v) => {
   if (!v) return undefined;
   if (/^\d+$/.test(String(v))) return Number(v);
@@ -193,14 +201,6 @@ app.get("/commands/search_tasks", async (req, res) => {
       order_by: "updated",
       reverse: "true",
       "assignees[]": assigneeId?.split?.(","),
-      reverse: true,
-      ... (assigneeId
-        ? Array.isArray(assigneeId)
-          ? { "assignees[]": assigneeId }
-          : assigneeId.includes(",")
-          ? { "assignees[]": assigneeId.split(",").map(s=>s.trim()).filter(Boolean) }
-          : { "assignees[]": [assigneeId] }
-        : {}),
       "statuses[]": status,
       ...(toEpoch(updatedFrom) ? { date_updated_gt: toEpoch(updatedFrom) } : {}),
       ...(toEpoch(updatedTo) ? { date_updated_lt: toEpoch(updatedTo) } : {}),
