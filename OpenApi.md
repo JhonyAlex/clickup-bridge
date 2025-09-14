@@ -15,7 +15,10 @@ info:
     • find - Búsqueda unificada inteligente
     
 servers:
+  - url: http://127.0.0.1:3107
+    description: "Servidor local de desarrollo"
   - url: http://localhost:3107
+    description: "Servidor local alternativo"
 
 paths:
   /commands/smart_find_folder:
