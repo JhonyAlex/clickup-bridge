@@ -76,16 +76,29 @@ paths:
     get:
       operationId: searchTasks
       parameters:
-        - { name: listId, in: query, required: true, schema: { type: string } }
+        - { name: teamId, in: query, required: false, schema: { type: string } }
+        - { name: spaceId, in: query, required: false, schema: { type: string } }
+        - { name: spaceName, in: query, required: false, schema: { type: string } }
+        - { name: folderId, in: query, required: false, schema: { type: string } }
+        - { name: listId, in: query, required: false, schema: { type: string } }
+        - { name: assigneeId, in: query, required: false, schema: { type: string } }
+        - { name: assigneeName, in: query, required: false, schema: { type: string } }
         - { name: nameContains, in: query, required: false, schema: { type: string } }
         - { name: updatedFrom, in: query, required: false, schema: { type: string, description: "ISO or epoch ms" } }
         - { name: updatedTo, in: query, required: false, schema: { type: string, description: "ISO or epoch ms" } }
-        - { name: assignee, in: query, required: false, schema: { type: string } }
         - { name: status, in: query, required: false, schema: { type: string } }
         - { name: page, in: query, required: false, schema: { type: string } }
         - { name: limit, in: query, required: false, schema: { type: integer, default: 100 } }
       responses:
         "200": { description: Tasks list }
+  /commands/find_user:
+    get:
+      operationId: findUser
+      parameters:
+        - { name: teamId, in: query, required: true, schema: { type: string } }
+        - { name: name, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Matched users }
   /commands/task_comments:
     get:
       operationId: taskComments
@@ -113,5 +126,11 @@ paths:
         "200": { description: Created task }
 components:
   schemas: {}
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: Authorization
 security:
   - {}
+  - apiKey: []
