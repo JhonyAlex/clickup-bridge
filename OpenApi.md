@@ -94,7 +94,122 @@ paths:
       responses:
         "200":
           description: OAuth Authentication Status
-  /commands/find_space:
+      /commands/executive_report:
+      get:
+        summary: "Genera reporte ejecutivo con filtrado estricto de fechas"
+        description: "Genera un reporte ejecutivo impersonal con filtrado estricto por fechas y resolución inteligente de espacios"
+        parameters:
+          - name: teamId
+            in: query
+            required: true
+            schema:
+              type: string
+          - name: spaceName
+            in: query
+            required: true
+            schema:
+              type: string
+          - name: from
+            in: query
+            required: true
+            schema:
+              type: string
+            description: "Fecha desde (ISO: 2024-01-15 o timestamp)"
+          - name: to
+            in: query
+            required: true
+            schema:
+              type: string
+            description: "Fecha hasta (ISO: 2024-01-15 o timestamp)"
+          - name: timezone
+            in: query
+            required: false
+            schema:
+              type: string
+              default: "Europe/Madrid"
+            description: "Zona horaria para el reporte"
+        responses:
+          200:
+            description: "Reporte ejecutivo generado exitosamente"
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    report:
+                      type: object
+                    metadata:
+                      type: object
+
+    /commands/create_task_validated:
+      post:
+        summary: "Crea tarea con validación completa de campos obligatorios"
+        description: "Crea una nueva tarea validando todos los campos obligatorios y resolviendo automáticamente espacios, usuarios y listas"
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - teamId
+                  - spaceName
+                  - taskName
+                  - description
+                  - assigneeNames
+                  - dueDate
+                properties:
+                  teamId:
+                    type: string
+                    description: "ID del equipo"
+                  spaceName:
+                    type: string
+                    description: "Nombre del espacio (obligatorio)"
+                  taskName:
+                    type: string
+                    description: "Nombre de la tarea (obligatorio)"
+                  description:
+                    type: string
+                    description: "Descripción de la tarea (obligatorio)"
+                  assigneeNames:
+                    type: array
+                    items:
+                      type: string
+                    description: "Array de nombres de responsables (obligatorio)"
+                  dueDate:
+                    type: string
+                    description: "Fecha límite ISO o timestamp (obligatorio)"
+                  priority:
+                    type: string
+                    enum: [urgent, high, normal, low]
+                    default: normal
+                  folderName:
+                    type: string
+                    description: "Nombre de carpeta (opcional)"
+                  listName:
+                    type: string
+                    description: "Nombre de lista (opcional, usa primera disponible si no se especifica)"
+                  status:
+                    type: string
+                    default: "to do"
+        responses:
+          200:
+            description: "Tarea creada exitosamente"
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    success:
+                      type: boolean
+                    task:
+                      type: object
+                    metadata:
+                      type: object
+          400:
+            description: "Campos obligatorios faltantes o usuarios no encontrados"
+
+    /commands/find_space_smart:
     get:
       operationId: findSpace
       parameters:

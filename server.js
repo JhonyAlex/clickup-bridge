@@ -130,6 +130,55 @@ app.all(/^\/api\/(.*)/, async (req, res) => {
 
 /** ------------------ COMMANDS (por nombre, fechas, etc.) ------------------ **/
 
+// Mapeo de alias para espacios comunes
+const SPACE_ALIASES = {
+  'pigmea': 'PIGMEA S.L.',
+  'pigmea sl': 'PIGMEA S.L.',
+  'pigmea s.l.': 'PIGMEA S.L.',
+  'pigmea s.l': 'PIGMEA S.L.',
+  'cambio digital': 'Cambio Digital',
+  'cd': 'Cambio Digital'
+};
+
+// Función para normalizar nombres de espacios
+function normalizeSpaceName(name) {
+  if (!name) return '';
+  const normalized = String(name).toLowerCase().trim();
+  return SPACE_ALIASES[normalized] || name;
+}
+
+// 0) Buscar Space INTELIGENTE con alias automático
+app.get("/commands/find_space_smart", async (req, res) => {
+  const { teamId, name } = req.query;
+  if (!teamId || !name) return res.status(400).json({ error: "teamId and name are required" });
+  
+  try {
+    const r = await cuGet(`/team/${teamId}/space`, { archived: "false" });
+    if (!r.ok) return res.status(r.status).json(r.data);
+    
+    const originalName = String(name);
+    const normalizedName = normalizeSpaceName(originalName);
+    
+    // Buscar primero con el nombre normalizado
+    let needle = normalizedName.toLowerCase();
+    let hits = (r.data?.spaces || []).filter((s) => (s?.name || "").toLowerCase().includes(needle));
+    
+    // Si no encuentra con el alias, buscar con el nombre original
+    if (hits.length === 0 && normalizedName !== originalName) {
+      needle = originalName.toLowerCase();
+      hits = (r.data?.spaces || []).filter((s) => (s?.name || "").toLowerCase().includes(needle));
+    }
+    
+    res.json({ 
+      hits, 
+      searched_as: normalizedName !== originalName ? normalizedName : originalName,
+      alias_used: normalizedName !== originalName 
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 1) Buscar Space por nombre dentro de un Team
 app.get("/commands/find_space", async (req, res) => {
   const { teamId, name } = req.query;
@@ -283,6 +332,171 @@ app.get("/commands/search_tasks", async (req, res) => {
   }
 });
 
+/** ------------------ CREACIÓN DE TAREAS VALIDADA ------------------ **/
+
+// Endpoint para crear tareas con validación completa
+app.post("/commands/create_task_validated", async (req, res) => {
+  const { 
+    spaceName,
+    teamId,
+    taskName,
+    description,
+    assigneeNames, // Array de nombres de usuarios
+    dueDate,
+    priority = 'normal',
+    folderName,
+    listName,
+    status = 'to do'
+  } = req.body || {};
+  
+  // 1. Validaciones obligatorias
+  const errors = [];
+  if (!teamId) errors.push("teamId es obligatorio");
+  if (!spaceName) errors.push("spaceName (espacio) es obligatorio");
+  if (!taskName) errors.push("taskName (nombre de tarea) es obligatorio");
+  if (!description) errors.push("description (descripción) es obligatoria");
+  if (!assigneeNames || assigneeNames.length === 0) errors.push("assigneeNames (responsables) es obligatorio");
+  if (!dueDate) errors.push("dueDate (fecha límite) es obligatoria");
+  
+  if (errors.length > 0) {
+    return res.status(400).json({ 
+      error: "Campos obligatorios faltantes", 
+      missing_fields: errors 
+    });
+  }
+
+  try {
+    // 2. Resolver espacio con alias
+    const normalizedSpaceName = normalizeSpaceName(spaceName);
+    const spaceResponse = await cuGet(`/team/${teamId}/space`, { archived: "false" });
+    if (!spaceResponse.ok) return res.status(spaceResponse.status).json(spaceResponse.data);
+    
+    const spaces = (spaceResponse.data?.spaces || []).filter(s => 
+      (s?.name || "").toLowerCase().includes(normalizedSpaceName.toLowerCase())
+    );
+    
+    if (spaces.length === 0) {
+      return res.status(404).json({ 
+        error: `Espacio '${spaceName}' no encontrado (buscado como '${normalizedSpaceName}')` 
+      });
+    }
+    
+    const space = spaces[0];
+    
+    // 3. Resolver usuarios/responsables
+    const teamResponse = await cuGet(`/team/${teamId}`);
+    if (!teamResponse.ok) return res.status(teamResponse.status).json(teamResponse.data);
+    
+    const allMembers = teamResponse.data?.team?.members || [];
+    const assigneeIds = [];
+    const notFound = [];
+    
+    for (const assigneeName of assigneeNames) {
+      const member = allMembers.find(m => 
+        m.user && (
+          (m.user.username || "").toLowerCase().includes(assigneeName.toLowerCase()) ||
+          (m.user.email || "").toLowerCase().includes(assigneeName.toLowerCase())
+        )
+      );
+      
+      if (member) {
+        assigneeIds.push(member.user.id);
+      } else {
+        notFound.push(assigneeName);
+      }
+    }
+    
+    if (notFound.length > 0) {
+      return res.status(400).json({ 
+        error: "Algunos responsables no fueron encontrados", 
+        not_found: notFound 
+      });
+    }
+    
+    // 4. Buscar carpeta si se especifica
+    let targetFolderId = null;
+    if (folderName) {
+      const foldersResponse = await cuGet(`/space/${space.id}/folder`, { archived: "false" });
+      if (foldersResponse.ok) {
+        const folders = (foldersResponse.data?.folders || []).filter(f => 
+          (f?.name || "").toLowerCase().includes(folderName.toLowerCase())
+        );
+        if (folders.length > 0) {
+          targetFolderId = folders[0].id;
+        }
+      }
+    }
+    
+    // 5. Buscar lista
+    let targetListId = null;
+    const listsPath = targetFolderId ? `/folder/${targetFolderId}/list` : `/space/${space.id}/list`;
+    const listsResponse = await cuGet(listsPath, { archived: "false" });
+    
+    if (listsResponse.ok) {
+      const lists = listsResponse.data?.lists || [];
+      
+      if (listName) {
+        // Buscar lista específica
+        const matchingLists = lists.filter(l => 
+          (l?.name || "").toLowerCase().includes(listName.toLowerCase())
+        );
+        if (matchingLists.length > 0) {
+          targetListId = matchingLists[0].id;
+        }
+      } else {
+        // Usar primera lista disponible
+        if (lists.length > 0) {
+          targetListId = lists[0].id;
+        }
+      }
+    }
+    
+    if (!targetListId) {
+      return res.status(404).json({ 
+        error: `No se encontró lista válida${listName ? ` con nombre '${listName}'` : ''} en ${targetFolderId ? 'carpeta' : 'espacio'}` 
+      });
+    }
+    
+    // 6. Parsear fecha límite
+    const dueDateTimestamp = parseDate(dueDate);
+    if (!dueDateTimestamp) {
+      return res.status(400).json({ 
+        error: "Formato de fecha límite inválido. Use ISO (2024-01-15) o timestamp" 
+      });
+    }
+    
+    // 7. Crear tarea
+    const taskData = {
+      name: taskName,
+      description: description,
+      assignees: assigneeIds,
+      due_date: dueDateTimestamp,
+      priority: priority === 'urgent' ? 1 : priority === 'high' ? 2 : priority === 'low' ? 4 : 3
+    };
+    
+    const createResponse = await cuPost(`/list/${targetListId}/task`, taskData);
+    
+    if (createResponse.ok) {
+      res.json({
+        success: true,
+        task: createResponse.data,
+        metadata: {
+          space_used: space.name,
+          assignees_resolved: assigneeNames,
+          due_date_formatted: formatDate(dueDateTimestamp),
+          folder_used: targetFolderId ? folderName : null,
+          list_used: targetListId
+        }
+      });
+    } else {
+      res.status(createResponse.status).json(createResponse.data);
+    }
+    
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 5) Comentarios de una tarea
 app.get("/commands/task_comments", async (req, res) => {
   const { taskId, limit } = req.query;
@@ -301,7 +515,185 @@ app.post("/commands/create_task", async (req, res) => {
   return res.status(r.status).json(r.data);
 });
 
-// 7) Buscar usuario por nombre en un team
+// 7) Buscar usuarios por nombre dentro de un equipo
+app.get("/commands/find_user", async (req, res) => {
+  const { teamId, name } = req.query;
+  if (!teamId || !name) return res.status(400).json({ error: "teamId and name are required" });
+
+  try {
+    const r = await cuGet(`/team/${teamId}`);
+    if (!r.ok) return res.status(r.status).json(r.data);
+
+    const needle = String(name).toLowerCase();
+    const hits = (r.data?.team?.members || [])
+      .map((m) => m.user)
+      .filter(
+        (u) =>
+          u &&
+          ((u.username || "").toLowerCase().includes(needle) ||
+            (u.email || "").toLowerCase().includes(needle))
+      )
+      .map((u) => ({ id: u.id, username: u.username, email: u.email }));
+
+    res.json({ hits });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** ------------------ INFORMES EJECUTIVOS MEJORADOS ------------------ **/
+
+// Función para convertir fechas con zona horaria (España por defecto)
+function parseDate(dateStr, timezone = 'Europe/Madrid') {
+  if (!dateStr) return undefined;
+  
+  // Si ya es un timestamp
+  if (/^\d+$/.test(String(dateStr))) {
+    return Number(dateStr);
+  }
+  
+  // Intentar parsear como fecha ISO
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return undefined;
+  
+  // Convertir a timestamp UTC
+  return date.getTime();
+}
+
+// Función para formatear fecha en zona horaria específica
+function formatDate(timestamp, timezone = 'Europe/Madrid') {
+  if (!timestamp) return 'fecha no disponible';
+  
+  const date = new Date(timestamp);
+  return date.toLocaleDateString('es-ES', {
+    timeZone: timezone,
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long', 
+    day: 'numeric'
+  });
+}
+
+// Endpoint para informes ejecutivos con filtro estricto por fechas
+app.get("/commands/executive_report", async (req, res) => {
+  const { 
+    teamId, 
+    spaceName, 
+    dateFrom, 
+    dateTo, 
+    timezone = 'Europe/Madrid',
+    includeComments = 'true',
+    includeDescriptions = 'false' 
+  } = req.query;
+  
+  if (!teamId || !spaceName || !dateFrom || !dateTo) {
+    return res.status(400).json({ 
+      error: "teamId, spaceName, dateFrom y dateTo son obligatorios" 
+    });
+  }
+
+  try {
+    // 1. Resolver espacio con sistema de alias
+    const normalizedSpaceName = normalizeSpaceName(spaceName);
+    const spaceResponse = await cuGet(`/team/${teamId}/space`, { archived: "false" });
+    if (!spaceResponse.ok) return res.status(spaceResponse.status).json(spaceResponse.data);
+    
+    const spaces = (spaceResponse.data?.spaces || []).filter(s => 
+      (s?.name || "").toLowerCase().includes(normalizedSpaceName.toLowerCase())
+    );
+    
+    if (spaces.length === 0) {
+      return res.status(404).json({ 
+        error: `No se encontró el espacio '${spaceName}' (buscado como '${normalizedSpaceName}')` 
+      });
+    }
+    
+    const space = spaces[0];
+    
+    // 2. Parsear fechas
+    const fromTimestamp = parseDate(dateFrom, timezone);
+    const toTimestamp = parseDate(dateTo, timezone);
+    
+    if (!fromTimestamp || !toTimestamp) {
+      return res.status(400).json({ 
+        error: "Formato de fecha inválido. Use ISO (2024-01-15) o timestamp" 
+      });
+    }
+    
+    // 3. Buscar tareas actualizadas en el rango
+    const tasksResponse = await cuGet("/task", {
+      space_ids: [space.id],
+      date_updated_gt: fromTimestamp,
+      date_updated_lt: toTimestamp + (24 * 60 * 60 * 1000) // +1 día para incluir todo el día
+    });
+    
+    if (!tasksResponse.ok) return res.status(tasksResponse.status).json(tasksResponse.data);
+    
+    const tasks = tasksResponse.data?.tasks || [];
+    
+    // 4. Generar informe con estilo impersonal
+    const report = {
+      period: {
+        from: formatDate(fromTimestamp, timezone),
+        to: formatDate(toTimestamp, timezone),
+        timezone: timezone
+      },
+      space: {
+        name: space.name,
+        searched_as: normalizedSpaceName,
+        alias_used: normalizedSpaceName !== spaceName
+      },
+      summary: {
+        total_tasks_updated: tasks.length,
+        tasks_by_status: {}
+      },
+      activities: []
+    };
+    
+    // 5. Procesar cada tarea
+    for (const task of tasks) {
+      const status = task.status?.status || 'sin estado';
+      report.summary.tasks_by_status[status] = (report.summary.tasks_by_status[status] || 0) + 1;
+      
+      const activity = {
+        task_id: task.id,
+        task_name: task.name,
+        status: status,
+        updated_date: formatDate(task.date_updated, timezone),
+        assignees: task.assignees?.map(a => a.username) || [],
+        action: `Se actualizó la tarea "${task.name}"`
+      };
+      
+      // 6. Agregar comentarios si están en el rango y se solicitan
+      if (includeComments === 'true') {
+        const commentsResponse = await cuGet(`/task/${task.id}/comment`);
+        if (commentsResponse.ok) {
+          const comments = (commentsResponse.data?.comments || []).filter(comment => {
+            const commentDate = parseInt(comment.date);
+            return commentDate >= fromTimestamp && commentDate <= toTimestamp + (24 * 60 * 60 * 1000);
+          });
+          
+          if (comments.length > 0) {
+            activity.comments = comments.map(c => ({
+              text: c.comment_text || c.comment,
+              author: c.user?.username || 'Usuario desconocido',
+              date: formatDate(parseInt(c.date), timezone)
+            }));
+          }
+        }
+      }
+      
+      report.activities.push(activity);
+    }
+    
+    res.json(report);
+    
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 7) Buscar usuarios por nombre dentro de un equipo (DUPLICADO - REMOVIDO)
 app.get("/commands/find_user", async (req, res) => {
   const { teamId, name } = req.query;
   if (!teamId || !name) {
