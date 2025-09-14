@@ -15,10 +15,8 @@ info:
     • find - Búsqueda unificada inteligente
     
 servers:
-  - url: https://localhost:3107
-    description: "Servidor local de desarrollo (HTTPS)"
-  - url: http://localhost:3107
-    description: "Servidor local de desarrollo (HTTP)"
+  - url: https://clickup.zynodo.com
+    description: "Servidor Dokploy (HTTPS público)"
 
 paths:
   /commands/smart_find_folder:
