@@ -58,18 +58,6 @@ paths:
               required: [name]
       responses:
         "200": { description: Task JSON }
-  /api/task/{taskId}/history:
-    get:
-      operationId: getTaskHistory
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Task History JSON
   /api/task/{taskId}:
     get:
       operationId: getTask
@@ -81,43 +69,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Complete Task Details JSON
-  /api/task/{taskId}/subtask:
-    get:
-      operationId: getSubtasks
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Subtasks JSON
-  /api/task/{taskId}/attachment:
-    get:
-      operationId: getTaskAttachments
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Task Attachments JSON
-  /api/task/{taskId}/time:
-    get:
-      operationId: getTaskTimeTracking
-      parameters:
-        - name: taskId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Time Tracking JSON
+          description: Complete Task Details JSON (includes assignees, status, dates, attachments, etc.)
   /oauth/authorize:
     get:
       operationId: startOAuth
