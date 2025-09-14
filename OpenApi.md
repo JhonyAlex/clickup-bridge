@@ -171,6 +171,49 @@ paths:
               required: [listId, name]
       responses:
         "200": { description: Created task }
+  /commands/workspaces:
+    get:
+      operationId: getWorkspaces
+      responses:
+        "200": { description: List of workspaces }
+  /commands/search_docs:
+    get:
+      operationId: searchDocs
+      parameters:
+        - { name: workspaceId, in: query, required: true, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 50 } }
+        - { name: creator, in: query, required: false, schema: { type: string } }
+        - { name: deleted, in: query, required: false, schema: { type: boolean, default: false } }
+        - { name: archived, in: query, required: false, schema: { type: boolean, default: false } }
+        - { name: parent_id, in: query, required: false, schema: { type: string } }
+        - { name: parent_type, in: query, required: false, schema: { type: string } }
+      responses:
+        "200": { description: Documents list }
+  /commands/get_doc:
+    get:
+      operationId: getDoc
+      parameters:
+        - { name: workspaceId, in: query, required: true, schema: { type: string } }
+        - { name: docId, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Document details }
+  /commands/get_doc_pages:
+    get:
+      operationId: getDocPages
+      parameters:
+        - { name: workspaceId, in: query, required: true, schema: { type: string } }
+        - { name: docId, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Document pages content }
+  /commands/find_docs:
+    get:
+      operationId: findDocs
+      parameters:
+        - { name: workspaceId, in: query, required: true, schema: { type: string } }
+        - { name: name, in: query, required: true, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 50 } }
+      responses:
+        "200": { description: Matched documents }
 components:
   schemas: {}
 security:
