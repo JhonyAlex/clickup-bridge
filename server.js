@@ -110,8 +110,8 @@ app.get("/oauth/status", (req, res) => {
 });
 
 /** ------------------ Proxy genérico /api/* ------------------ **/
-app.all("/api/*", async (req, res) => {
-  const path = req.params[0] || "";
+app.all("/api/:path(*)", async (req, res) => {
+  const path = req.params.path || "";
   const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
   const url = queryString ? `${CLICKUP_API}/${path}?${queryString}` : `${CLICKUP_API}/${path}`;
   const options = {
