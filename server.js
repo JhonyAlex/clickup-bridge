@@ -1,6 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
+import fs from 'fs';
 dotenv.config();
 
 const app = express();
@@ -11,6 +12,13 @@ app.use(express.json());
 
 /** ------------------ OAuth State ------------------ **/
 let OAUTH_ACCESS_TOKEN = null;
+const TOKEN_FILE = '.token';
+
+// Load token from file on startup
+if (fs.existsSync(TOKEN_FILE)) {
+  OAUTH_ACCESS_TOKEN = fs.readFileSync(TOKEN_FILE, 'utf-8');
+  console.log("Loaded token from file.");
+}
 
 /** ------------------ Utils ------------------ **/
 const AUTH = () => ({
@@ -88,6 +96,8 @@ app.get("/oauth/callback", async (req, res) => {
     const tokenData = await tokenResponse.json();
     if (tokenData.access_token) {
       OAUTH_ACCESS_TOKEN = tokenData.access_token;
+      fs.writeFileSync(TOKEN_FILE, OAUTH_ACCESS_TOKEN);
+      console.log("Successfully obtained and saved access token.");
       res.json({
         success: true,
         message: "OAuth authentication successful",
@@ -110,8 +120,8 @@ app.get("/oauth/status", (req, res) => {
 });
 
 /** ------------------ Proxy genérico /api/* ------------------ **/
-app.all(/^\/api\/(.*)/, async (req, res) => {
-  const path = req.params.path || "";
+app.all("^/api/(.*)$", async (req, res) => {
+  const path = req.params[0] || "";
   const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
   const url = queryString ? `${CLICKUP_API}/${path}?${queryString}` : `${CLICKUP_API}/${path}`;
   const options = {
@@ -368,9 +378,8 @@ app.get("/commands/workspaces", async (req, res) => {
 
 // 2) Buscar documentos en un workspace
 app.get("/commands/search_docs", async (req, res) => {
-  const { workspaceId, limit = 50, creator, deleted = false, archived = false, parent_id, parent_type } = req.
-    query;
-
+  const { workspaceId, limit = 50, creator, deleted = false, archived = false, parent_id, parent_type } = req.query;
+  
   if (!workspaceId) {
     return res.status(400).json({ error: "workspaceId is required" });
   }
@@ -381,7 +390,7 @@ app.get("/commands/search_docs", async (req, res) => {
       deleted: deleted === 'true',
       archived: archived === 'true'
     };
-
+    
     if (creator) params.creator = creator;
     if (parent_id) params.parent_id = parent_id;
     if (parent_type) params.parent_type = parent_type;
@@ -396,7 +405,7 @@ app.get("/commands/search_docs", async (req, res) => {
 // 3) Obtener detalles de un documento específico
 app.get("/commands/get_doc", async (req, res) => {
   const { workspaceId, docId } = req.query;
-
+  
   if (!workspaceId || !docId) {
     return res.status(400).json({ error: "workspaceId and docId are required" });
   }
@@ -412,7 +421,7 @@ app.get("/commands/get_doc", async (req, res) => {
 // 4) Obtener páginas de un documento (contenido)
 app.get("/commands/get_doc_pages", async (req, res) => {
   const { workspaceId, docId } = req.query;
-
+  
   if (!workspaceId || !docId) {
     return res.status(400).json({ error: "workspaceId and docId are required" });
   }
@@ -428,22 +437,22 @@ app.get("/commands/get_doc_pages", async (req, res) => {
 // 5) Buscar documentos por nombre (comando de alto nivel)
 app.get("/commands/find_docs", async (req, res) => {
   const { workspaceId, name, limit = 50 } = req.query;
-
+  
   if (!workspaceId || !name) {
     return res.status(400).json({ error: "workspaceId and name are required" });
   }
 
   try {
     // Buscar todos los documentos
-    const r = await cuGetV3(`/workspaces/${workspaceId}/docs`, {
+    const r = await cuGetV3(`/workspaces/${workspaceId}/docs`, { 
       limit: Math.min(parseInt(limit) || 50, 100)
     });
-
+    
     if (!r.ok) return res.status(r.status).json(r.data);
 
     // Filtrar por nombre
     const needle = String(name).toLowerCase();
-    const hits = (r.data.docs || []).filter(doc =>
+    const hits = (r.data.docs || []).filter(doc => 
       (doc.name || "").toLowerCase().includes(needle)
     );
 
