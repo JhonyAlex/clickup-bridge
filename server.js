@@ -1,112 +1,12 @@
 import express from "express";
 import fetch from "node-fetch";
-<<<<<<< HEAD
-=======
 import dotenv from "dotenv";
 dotenv.config();
->>>>>>> d479e14ba8ecf54569a50e2b7c37799ee35359b8
 
 const app = express();
 const PORT = process.env.PORT || 3107;
-const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const CLICKUP_API = "https://api.clickup.com/api/v2";
 
-<<<<<<< HEAD
-// --- OAuth Configuration ---
-const CLICKUP_CLIENT_ID = process.env.CLICKUP_CLIENT_ID;
-const CLICKUP_CLIENT_SECRET = process.env.CLICKUP_CLIENT_SECRET;
-// IMPORTANT: This must match the Redirect URL in your ClickUp App settings
-const REDIRECT_URI = `${BASE_URL}/auth/clickup/callback`;
-
-// In-memory store for the access token. For production, you'd want a more persistent store.
-let accessToken = null;
-
-app.use(express.json());
-
-// --- OAuth Routes ---
-
-// 1. Redirects the user to ClickUp to authorize the application
-app.get("/auth/clickup", (req, res) => {
-  if (!CLICKUP_CLIENT_ID) {
-    return res.status(500).send("CLICKUP_CLIENT_ID is not configured.");
-  }
-  const authUrl = `https://app.clickup.com/api?client_id=${CLICKUP_CLIENT_ID}&redirect_uri=${REDIRECT_URI}`;
-  res.redirect(authUrl);
-});
-
-// 2. ClickUp redirects back here after authorization
-app.get("/auth/clickup/callback", async (req, res) => {
-  const { code } = req.query;
-
-  if (!code) {
-    return res.status(400).send("Authorization code is missing.");
-  }
-
-  if (!CLICKUP_CLIENT_ID || !CLICKUP_CLIENT_SECRET) {
-    return res.status(500).send("OAuth credentials are not configured.");
-  }
-
-  try {
-    const response = await fetch(`${CLICKUP_API}/oauth/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: CLICKUP_CLIENT_ID,
-        client_secret: CLICKUP_CLIENT_SECRET,
-        code,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (data.access_token) {
-      accessToken = data.access_token;
-      console.log("Successfully obtained access token.");
-      res.send("Authentication successful! You can now use the API.");
-    } else {
-      console.error("Failed to obtain access token:", data);
-      res.status(500).send("Failed to obtain access token.");
-    }
-  } catch (error) {
-    console.error("Error during token exchange:", error);
-    res.status(500).send("An error occurred during authentication.");
-  }
-});
-
-// --- API Proxy ---
-// This will now use the OAuth access token if available
-app.all("/api/*", async (req, res) => {
-  const useOAuth = !!accessToken;
-  const personalToken = process.env.CLICKUP_API_TOKEN;
-
-  if (!useOAuth && !personalToken) {
-    return res.status(401).json({ err: "Not authenticated. Please visit /auth/clickup to log in, or set CLICKUP_API_TOKEN." });
-  }
-
-  const path = req.params[0] || "";
-  const url = new URL(`${CLICKUP_API}/${path}`);
-  for (const [k, v] of Object.entries(req.query || {})) {
-    if (Array.isArray(v)) v.forEach((vv) => url.searchParams.append(k, String(vv)));
-    else url.searchParams.set(k, String(v));
-  }
-
-  const r = await fetch(url.toString(), {
-    method: req.method,
-    headers: {
-      // Prefer OAuth token, fall back to personal token
-      Authorization: useOAuth ? `Bearer ${accessToken}` : personalToken,
-      "Content-Type": "application/json",
-    },
-    body: ["GET", "HEAD"].includes(req.method) ? undefined : JSON.stringify(req.body),
-  });
-
-  const data = await r.json().catch(() => ({}));
-  res.status(r.status).json(data);
-});
-
-// --- Other Routes ---
-app.get("/sse", (req, res) => {
-=======
 app.use(express.json());
 
 /** ------------------ OAuth State ------------------ **/
@@ -155,23 +55,10 @@ async function cuPost(path, body) {
 /** ------------------ Health & SSE ------------------ **/
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.get("/sse", (_req, res) => {
->>>>>>> d479e14ba8ecf54569a50e2b7c37799ee35359b8
   res.setHeader("Content-Type", "text/event-stream");
   res.write(`event: ready\ndata: ClickUp Bridge activo\n\n`);
 });
 
-<<<<<<< HEAD
-app.get("/health", (req, res) => res.json({ ok: true }));
-
-app.listen(PORT, () => {
-  console.log(`Bridge listening on port ${PORT}`);
-  if (CLICKUP_CLIENT_ID && BASE_URL) {
-    console.log(`To authenticate, visit: ${BASE_URL}/auth/clickup`);
-  } else {
-    console.log('OAuth is not configured. Set CLICKUP_CLIENT_ID, CLICKUP_CLIENT_SECRET, and BASE_URL to enable it.');
-  }
-});
-=======
 /** ------------------ OAuth Endpoints ------------------ **/
 
 // Iniciar flujo OAuth
@@ -201,10 +88,10 @@ app.get("/oauth/callback", async (req, res) => {
     const tokenData = await tokenResponse.json();
     if (tokenData.access_token) {
       OAUTH_ACCESS_TOKEN = tokenData.access_token;
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         message: "OAuth authentication successful",
-        expires_in: tokenData.expires_in 
+        expires_in: tokenData.expires_in
       });
     } else {
       res.status(400).json({ error: "Failed to get access token", details: tokenData });
@@ -216,14 +103,14 @@ app.get("/oauth/callback", async (req, res) => {
 
 // Endpoint para verificar estado OAuth
 app.get("/oauth/status", (req, res) => {
-  res.json({ 
+  res.json({
     authenticated: !!OAUTH_ACCESS_TOKEN,
-    token_available: !!OAUTH_ACCESS_TOKEN 
+    token_available: !!OAUTH_ACCESS_TOKEN
   });
 });
 
 /** ------------------ Proxy genérico /api/* ------------------ **/
-app.all(/^\/api\/(.*)/, async (req, res) => {
+app.all("/api/*", async (req, res) => {
   const path = req.params[0] || "";
   const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
   const url = queryString ? `${CLICKUP_API}/${path}?${queryString}` : `${CLICKUP_API}/${path}`;
@@ -367,7 +254,7 @@ app.get("/commands/search_tasks", async (req, res) => {
       limit: Math.min(Number.isFinite(Number(limit)) ? Number(limit) : 100, 200),
       order_by: "updated",
       reverse: "true",
-      "assignees[]": assigneeId?.split?.(","),
+      "assignees[]": assigneeId?.split?.(','),
       "statuses[]": status,
       ...(toEpoch(updatedFrom) ? { date_updated_gt: toEpoch(updatedFrom) } : {}),
       ...(toEpoch(updatedTo) ? { date_updated_lt: toEpoch(updatedTo) } : {}),
@@ -547,7 +434,7 @@ app.get("/commands/find_docs", async (req, res) => {
 
   try {
     // Buscar todos los documentos
-    const r = await cuGetV3(`/workspaces/${workspaceId}/docs`, { 
+    const r = await cuGetV3(`/workspaces/${workspaceId}/docs`, {
       limit: Math.min(parseInt(limit) || 50, 100)
     });
     
@@ -567,4 +454,3 @@ app.get("/commands/find_docs", async (req, res) => {
 
 /** ------------------ Start ------------------ **/
 app.listen(PORT, () => console.log(`Bridge ${PORT}`));
->>>>>>> d479e14ba8ecf54569a50e2b7c37799ee35359b8
