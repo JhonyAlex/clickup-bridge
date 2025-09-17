@@ -141,9 +141,9 @@ app.all("^/api/(.*)$", async (req, res) => {
 
     const r = await fetch(url, options);
 
-    // Si el token es inválido o ha expirado, ClickUp devuelve 401 o 403.
+    // Si el token es inválido o ha expirado, ClickUp devuelve 401.
     // Devolvemos un 401 para que el cliente (GPT) sepa que debe re-autenticar.
-    if (r.status === 401 || r.status === 403) {
+    if (r.status === 401) {
       return res.status(401).json({
         error: "Unauthorized: Invalid or expired ClickUp API token.",
         reauth_url: "/oauth/authorize"
