@@ -130,7 +130,26 @@ app.all("^/api/(.*)$", async (req, res) => {
     body: ["GET", "HEAD"].includes(req.method) ? undefined : JSON.stringify(req.body),
   };
   try {
+    const path = req.params[0] || "";
+    const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
+    const url = queryString ? `${CLICKUP_API}/${path}?${queryString}` : `${CLICKUP_API}/${path}`;
+    const options = {
+      method: req.method,
+      headers: AUTH(),
+      body: ["GET", "HEAD"].includes(req.method) ? undefined : JSON.stringify(req.body),
+    };
+
     const r = await fetch(url, options);
+
+    // Si el token es inválido o ha expirado, ClickUp devuelve 401 o 403.
+    // Devolvemos un 401 para que el cliente (GPT) sepa que debe re-autenticar.
+    if (r.status === 401 || r.status === 403) {
+      return res.status(401).json({
+        error: "Unauthorized: Invalid or expired ClickUp API token.",
+        reauth_url: "/oauth/authorize"
+      });
+    }
+
     const data = await j(r);
     res.status(r.status).json(data);
   } catch (e) {
